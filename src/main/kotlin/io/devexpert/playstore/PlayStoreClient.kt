@@ -16,260 +16,150 @@ import java.io.File
 import java.io.FileInputStream
 
 /**
- * Client for interacting with Google Play Console API
+ * Talks to the Google Play Android Publisher API. The only network peer is Google.
  */
-class PlayStoreClient(
-    private val serviceAccountKeyPath: String,
-    private val applicationName: String = "Play Store MCP Server"
-) {
+class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher {
     private val logger = LoggerFactory.getLogger(PlayStoreClient::class.java)
 
-    private val publisher: AndroidPublisher by lazy {
-        initializePublisher()
-    }
+    private val publisher: AndroidPublisher by lazy { initializePublisher() }
 
     private fun initializePublisher(): AndroidPublisher {
-        logger.info("Initializing Google Play Console API client...")
+        val keyFile = File(serviceAccountKeyPath)
+        if (!keyFile.isFile) throw PlayStoreException("Service account key file not found")
 
-        try {
-            // Initialize HTTP transport and JSON factory
-            val httpTransport = GoogleNetHttpTransport.newTrustedTransport()
-            val jsonFactory = GsonFactory.getDefaultInstance()
-
-            // Load service account credentials
-            val credentialsFile = File(serviceAccountKeyPath)
-            if (!credentialsFile.exists()) {
-                throw IllegalArgumentException("Service account key file not found: $serviceAccountKeyPath")
+        return try {
+            val credential = FileInputStream(keyFile).use { stream ->
+                ServiceAccountCredentials.fromStream(stream)
+                    .createScoped(listOf(AndroidPublisherScopes.ANDROIDPUBLISHER))
             }
-
-            val credential = ServiceAccountCredentials.fromStream(
-                FileInputStream(credentialsFile)
-            ).createScoped(listOf(AndroidPublisherScopes.ANDROIDPUBLISHER))
-            
-            val httpCredentialsAdapter = HttpCredentialsAdapter(credential)
-
+            val credentialsAdapter = HttpCredentialsAdapter(credential)
             val requestInitializer = HttpRequestInitializer { request ->
-                httpCredentialsAdapter.initialize(request)
-                request.connectTimeout = 60000 // 60 seconds
-                request.readTimeout = 600000 // 10 minutes for large file uploads
+                credentialsAdapter.initialize(request)
+                request.connectTimeout = CONNECT_TIMEOUT_MS
+                request.readTimeout = UPLOAD_READ_TIMEOUT_MS
             }
-            
-            // Build the API client with extended timeouts
-            val publisher = AndroidPublisher.Builder(httpTransport, jsonFactory, requestInitializer)
-                .setApplicationName(applicationName)
-                .build()
-
-            logger.info("Google Play Console API client initialized successfully")
-            return publisher
-
+            AndroidPublisher.Builder(
+                GoogleNetHttpTransport.newTrustedTransport(),
+                GsonFactory.getDefaultInstance(),
+                requestInitializer
+            ).setApplicationName(APPLICATION_NAME).build()
         } catch (e: Exception) {
-            logger.error("Failed to initialize Google Play Console API client", e)
             throw PlayStoreException("Failed to initialize API client: ${e.message}", e)
         }
     }
 
-    /**
-     * Get release information for an app
-     */
-    fun getReleases(packageName: String): List<PlayStoreRelease> {
-        logger.debug("Fetching releases for: $packageName")
-
-        return try {
-            val editRequest = publisher.edits().insert(packageName, null)
-            val edit = editRequest.execute()
-            val editId = edit.id
-
-            val tracks = publisher.edits().tracks().list(packageName, editId).execute()
-            val releases = mutableListOf<PlayStoreRelease>()
-
-            tracks?.tracks?.forEach { track ->
-                track.releases?.forEach { release ->
-                    releases.add(
-                        PlayStoreRelease(
-                            packageName = packageName,
-                            track = track.track ?: "unknown",
-                            status = release.status ?: "unknown",
-                            versionCode = release.versionCodes?.firstOrNull() ?: 0,
-                            rolloutPercentage = release.userFraction?.times(100)?.toInt() ?: 100,
-                            startTime = System.currentTimeMillis(),
-                            completedTime = if (release.status == "completed") System.currentTimeMillis() else null
-                        )
+    override fun listReleases(packageName: String): List<PlayStoreRelease> {
+        val edits = publisher.edits()
+        val editId = edits.insert(packageName, null).execute().id
+        try {
+            val tracks = edits.tracks().list(packageName, editId).execute().tracks.orEmpty()
+            return tracks.flatMap { track ->
+                track.releases.orEmpty().map { release ->
+                    PlayStoreRelease(
+                        track = track.track ?: "unknown",
+                        status = release.status ?: "unknown",
+                        versionCodes = release.versionCodes.orEmpty(),
+                        userFraction = release.userFraction,
+                        name = release.name
                     )
                 }
             }
-
-            // Clean up the edit
-            publisher.edits().delete(packageName, editId).execute()
-
-            releases
-
-        } catch (e: Exception) {
-            logger.error("Failed to fetch releases for $packageName", e)
-            throw PlayStoreException("Failed to fetch releases: ${e.message}", e)
+        } finally {
+            edits.delete(packageName, editId).execute()
         }
     }
 
-    /**
-     * Deploy a new version of an app
-     */
-    fun deployApp(
+    override fun deploy(request: DeployRequest): PlayStoreDeploymentResult {
+        logger.info("Deploying to the {} track of {}", request.track, request.packageName)
+        return runEdit(request.packageName, request.track) { editId ->
+            val versionCode = upload(request, editId)
+            val release = TrackRelease().apply {
+                name = "Release $versionCode"
+                versionCodes = listOf(versionCode)
+                if (request.rolloutPercentage < 1.0) {
+                    status = "inProgress"
+                    userFraction = request.rolloutPercentage
+                } else {
+                    status = "completed"
+                }
+                if (request.releaseNotes.isNotEmpty()) {
+                    releaseNotes = request.releaseNotes.map { (language, text) ->
+                        LocalizedText().apply {
+                            this.language = language
+                            this.text = text
+                        }
+                    }
+                }
+            }
+            setTrack(request.packageName, editId, request.track, release)
+            versionCode to "Uploaded and released to ${request.track}"
+        }
+    }
+
+    override fun promote(request: PromoteRequest): PlayStoreDeploymentResult {
+        logger.info("Promoting from {} to {} for {}", request.fromTrack, request.toTrack, request.packageName)
+        return runEdit(request.packageName, request.toTrack) { editId ->
+            val source = publisher.edits().tracks().get(request.packageName, editId, request.fromTrack).execute()
+            val sourceRelease = source.releases.orEmpty().find { it.versionCodes.orEmpty().contains(request.versionCode) }
+                ?: throw PlayStoreException("Version ${request.versionCode} not found in ${request.fromTrack}")
+            val release = TrackRelease().apply {
+                name = sourceRelease.name
+                versionCodes = sourceRelease.versionCodes
+                status = "completed"
+                releaseNotes = sourceRelease.releaseNotes
+            }
+            setTrack(request.packageName, editId, request.toTrack, release)
+            request.versionCode to "Promoted from ${request.fromTrack} to ${request.toTrack}"
+        }
+    }
+
+    /** Uploads the bundle or APK and returns the version code Play assigned from the file itself. */
+    private fun upload(request: DeployRequest, editId: String): Long {
+        val file = File(request.apkPath)
+        val edits = publisher.edits()
+        return if (file.extension.equals("aab", ignoreCase = true)) {
+            edits.bundles().upload(request.packageName, editId, FileContent(MIME_BINARY, file)).execute().versionCode
+        } else {
+            edits.apks().upload(request.packageName, editId, FileContent(MIME_APK, file)).execute().versionCode
+        }.toLong()
+    }
+
+    private fun setTrack(packageName: String, editId: String, trackName: String, release: TrackRelease) {
+        val track = Track().apply {
+            track = trackName
+            releases = listOf(release)
+        }
+        publisher.edits().tracks().update(packageName, editId, trackName, track).execute()
+    }
+
+    /** Opens an edit, runs [block], commits it, and deletes the edit if anything fails before commit. */
+    private fun runEdit(
         packageName: String,
         track: String,
-        apkPath: String,
-        versionCode: Long,
-        releaseNotes: String?,
-        rolloutPercentage: Double = 1.0
+        block: (editId: String) -> Pair<Long, String>
     ): PlayStoreDeploymentResult {
-        logger.info("Deploying app: $packageName to $track track, version $versionCode")
-
+        var editId: String? = null
         return try {
-            // Create a new edit
-            val editRequest = publisher.edits().insert(packageName, null)
-            val edit = editRequest.execute()
-            val editId = edit.id
-
-            logger.debug("Created edit: $editId")
-
-            // Upload the APK/AAB
-            val apkFile = File(apkPath)
-            if (!apkFile.exists()) {
-                throw PlayStoreException("APK/AAB file not found: $apkPath")
-            }
-
-            val uploadRequest = if (apkPath.endsWith(".aab")) {
-                publisher.edits().bundles().upload(
-                    packageName, editId,
-                    FileContent("application/octet-stream", apkFile)
-                )
-            } else {
-                publisher.edits().apks().upload(
-                    packageName, editId,
-                    FileContent("application/vnd.android.package-archive", apkFile)
-                )
-            }
-
-            uploadRequest.execute()
-            logger.debug("Upload completed, version code: $versionCode")
-
-            // Create a release
-            val release = TrackRelease()
-            release.name = "Release $versionCode"
-            release.versionCodes = listOf(versionCode)
-            
-            // Set status and rollout percentage (userFraction in the API)
-            if (rolloutPercentage < 1.0) {
-                release.status = "inProgress"
-                release.userFraction = rolloutPercentage
-            } else {
-                release.status = "completed"
-            }
-
-            if (!releaseNotes.isNullOrBlank()) {
-                val releaseNote = LocalizedText()
-                releaseNote.language = "en-US"
-                releaseNote.text = releaseNotes
-                release.releaseNotes = listOf(releaseNote)
-            }
-
-            // Update the track
-            val trackUpdate = Track()
-            trackUpdate.track = track
-            trackUpdate.releases = listOf(release)
-
-            publisher.edits().tracks().update(packageName, editId, track, trackUpdate).execute()
-
-            // Commit the edit
-            val commitRequest = publisher.edits().commit(packageName, editId)
-            commitRequest.execute()
-
-            logger.info("Successfully deployed $packageName version $versionCode to $track")
-
-            PlayStoreDeploymentResult(
-                success = true,
-                deploymentId = editId,
-                packageName = packageName,
-                track = track,
-                versionCode = versionCode,
-                message = "Successfully deployed to $track track"
-            )
-
+            val id = publisher.edits().insert(packageName, null).execute().id
+            editId = id
+            val (versionCode, message) = block(id)
+            publisher.edits().commit(packageName, id).execute()
+            editId = null
+            PlayStoreDeploymentResult(true, id, packageName, track, versionCode, message)
         } catch (e: Exception) {
-            logger.error("Failed to deploy app $packageName", e)
-            PlayStoreDeploymentResult(
-                success = false,
-                deploymentId = null,
-                packageName = packageName,
-                track = track,
-                versionCode = versionCode,
-                message = "Deployment failed: ${e.message}",
-                error = e
-            )
+            logger.error("Play operation failed: {}", e.message)
+            editId?.let { runCatching { publisher.edits().delete(packageName, it).execute() } }
+            PlayStoreDeploymentResult(false, null, packageName, track, null, "Operation failed: ${e.message}")
         }
     }
 
-    /**
-     * Promote a release from one track to another
-     */
-    fun promoteRelease(
-        packageName: String,
-        fromTrack: String,
-        toTrack: String,
-        versionCode: Long
-    ): PlayStoreDeploymentResult {
-        logger.info("Promoting $packageName version $versionCode from $fromTrack to $toTrack")
-
-        return try {
-            val editRequest = publisher.edits().insert(packageName, null)
-            val edit = editRequest.execute()
-            val editId = edit.id
-
-            // Get the release from source track
-            val sourceTrackData = publisher.edits().tracks().get(packageName, editId, fromTrack).execute()
-            val sourceRelease = sourceTrackData.releases?.find { release ->
-                release.versionCodes?.contains(versionCode) == true
-            } ?: throw PlayStoreException("Version $versionCode not found in $fromTrack track")
-
-            // Create new release for target track
-            val newRelease = TrackRelease()
-            newRelease.name = sourceRelease.name
-            newRelease.versionCodes = sourceRelease.versionCodes
-            newRelease.status = "completed"
-            newRelease.releaseNotes = sourceRelease.releaseNotes
-
-            val targetTrack = Track()
-            targetTrack.track = toTrack
-            targetTrack.releases = listOf(newRelease)
-
-            publisher.edits().tracks().update(packageName, editId, toTrack, targetTrack).execute()
-
-            // Commit the changes
-            publisher.edits().commit(packageName, editId).execute()
-
-            logger.info("Successfully promoted $packageName version $versionCode to $toTrack")
-
-            PlayStoreDeploymentResult(
-                success = true,
-                deploymentId = editId,
-                packageName = packageName,
-                track = toTrack,
-                versionCode = versionCode,
-                message = "Successfully promoted from $fromTrack to $toTrack"
-            )
-
-        } catch (e: Exception) {
-            logger.error("Failed to promote release", e)
-            PlayStoreDeploymentResult(
-                success = false,
-                deploymentId = null,
-                packageName = packageName,
-                track = toTrack,
-                versionCode = versionCode,
-                message = "Promotion failed: ${e.message}",
-                error = e
-            )
-        }
+    private companion object {
+        const val APPLICATION_NAME = "Play Store MCP Server"
+        const val CONNECT_TIMEOUT_MS = 60_000
+        const val UPLOAD_READ_TIMEOUT_MS = 600_000
+        const val MIME_BINARY = "application/octet-stream"
+        const val MIME_APK = "application/vnd.android.package-archive"
     }
-
 }
 
 /**

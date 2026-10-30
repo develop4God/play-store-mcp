@@ -93,7 +93,10 @@ private fun Map<String, JsonElement>.requireString(key: String): String {
 }
 
 private fun Map<String, JsonElement>.requirePackageName(): String {
-    val name = requireString("packageName")
+    return validatePackageName(requireString("packageName"))
+}
+
+fun validatePackageName(name: String): String {
     if (!PACKAGE_NAME.matches(name)) throw InvalidRequestException("packageName is not a valid application id: '$name'")
     return name
 }
