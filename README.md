@@ -194,6 +194,7 @@ Verify that the package name is correct and the application is configured in Pla
 
 - The committed `gradle-wrapper.jar` matches Gradle's official 8.14.3 checksum (`7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172`).
 - No credentials are stored in the repository or its history; the service account key lives outside it and `*.json` is git-ignored.
+- CI runs a [gitleaks](https://github.com/gitleaks/gitleaks) secret scan over the full git history on every push, pull request and weekly (`.github/workflows/security.yml`).
 - The production hold (draft + `changesNotSentForReview`) is implemented per the Play API, but it is not covered by an automated test because it needs the live API. Check the first production upload in the Play Console to confirm it shows as saved and not sent for review.
 
 ## Acknowledgements
