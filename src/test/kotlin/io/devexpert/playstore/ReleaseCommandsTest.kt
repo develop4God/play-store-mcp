@@ -15,6 +15,7 @@ private class FakePublisher(
 ) : PlayPublisher {
     val deployCalls = mutableListOf<DeployRequest>()
     val promoteCalls = mutableListOf<PromoteRequest>()
+    val notesCalls = mutableListOf<UpdateReleaseNotesRequest>()
     val listCalls = mutableListOf<String>()
 
     override fun listReleases(packageName: String): List<PlayStoreRelease> {
@@ -30,6 +31,11 @@ private class FakePublisher(
     override fun promote(request: PromoteRequest): PlayStoreDeploymentResult {
         promoteCalls += request
         return PlayStoreDeploymentResult(true, "edit-2", request.packageName, request.toTrack, request.versionCode, "ok")
+    }
+
+    override fun updateReleaseNotes(request: UpdateReleaseNotesRequest): PlayStoreDeploymentResult {
+        notesCalls += request
+        return PlayStoreDeploymentResult(true, "edit-3", request.packageName, request.track, request.versionCode, "ok")
     }
 }
 
@@ -126,5 +132,49 @@ class ReleaseCommandsTest {
         assertContains(json, "\"versionCodes\"")
         assertContains(json, "132")
         assertContains(json, "internal")
+    }
+
+    private fun notesRequest(confirm: Boolean) =
+        UpdateReleaseNotesRequest("com.example.app", "beta", 141, mapOf("en-US" to "Fixes"), confirm)
+
+    @Test
+    fun `release notes update without confirm is a dry run`() {
+        val publisher = FakePublisher()
+
+        val result = ReleaseCommands(publisher).updateReleaseNotes(notesRequest(confirm = false))
+
+        assertTrue(publisher.notesCalls.isEmpty())
+        assertFalse(result.executed)
+        assertContains(result.message, "DRY RUN")
+    }
+
+    @Test
+    fun `release notes update with confirm calls the publisher once`() {
+        val publisher = FakePublisher()
+
+        ReleaseCommands(publisher).updateReleaseNotes(notesRequest(confirm = true))
+
+        assertEquals(1, publisher.notesCalls.size)
+    }
+
+    @Test
+    fun `a production dry run says it will only be saved as a draft not sent for review`() {
+        val file = File.createTempFile("app", ".aab").also { tempFiles += it }
+        val request = DeployRequest("com.example.app", "production", file.absolutePath, emptyMap(), false)
+
+        val result = ReleaseCommands(FakePublisher()).deploy(request)
+
+        assertContains(result.message, "draft")
+        assertContains(result.message, "NOT sent for review")
+    }
+
+    @Test
+    fun `a production notes dry run says only drafts are edited and nothing is sent for review`() {
+        val request = UpdateReleaseNotesRequest("com.example.app", "production", 141, mapOf("en-US" to "x"), false)
+
+        val result = ReleaseCommands(FakePublisher()).updateReleaseNotes(request)
+
+        assertContains(result.message, "draft")
+        assertContains(result.message, "NOT sent for review")
     }
 }

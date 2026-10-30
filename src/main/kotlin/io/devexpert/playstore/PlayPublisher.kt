@@ -10,4 +10,6 @@ interface PlayPublisher {
     fun deploy(request: DeployRequest): PlayStoreDeploymentResult
 
     fun promote(request: PromoteRequest): PlayStoreDeploymentResult
+
+    fun updateReleaseNotes(request: UpdateReleaseNotesRequest): PlayStoreDeploymentResult
 }

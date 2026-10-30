@@ -47,13 +47,15 @@ class DeployRequestTest {
     }
 
     @Test
-    fun `alpha track is allowed`() {
-        assertEquals("alpha", DeployRequest.parse(args(overrides = arrayOf("track" to JsonPrimitive("alpha")))).track)
+    fun `alpha beta and production tracks are allowed`() {
+        listOf("alpha", "beta", "production").forEach { track ->
+            assertEquals(track, DeployRequest.parse(args(overrides = arrayOf("track" to JsonPrimitive(track)))).track)
+        }
     }
 
     @Test
-    fun `production beta and unknown tracks are rejected`() {
-        listOf("production", "beta", "PRODUCTION", "qa", "").forEach { track ->
+    fun `unknown tracks are rejected`() {
+        listOf("PRODUCTION", "qa", "").forEach { track ->
             assertFailsWith<InvalidRequestException>("track '$track'") {
                 DeployRequest.parse(args(overrides = arrayOf("track" to JsonPrimitive(track))))
             }
@@ -112,13 +114,11 @@ class DeployRequestTest {
 
     @Test
     fun `constructing a request directly cannot bypass the track policy`() {
-        listOf("production", "beta").forEach { track ->
-            assertFailsWith<InvalidRequestException>("track '$track'") {
-                DeployRequest("com.example.app", track, bundle().absolutePath, emptyMap(), true)
-            }
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest("com.example.app", "qa", bundle().absolutePath, emptyMap(), true)
         }
         assertFailsWith<InvalidRequestException> {
-            DeployRequest.parse(args()).copy(track = "production")
+            DeployRequest.parse(args()).copy(track = "staging")
         }
     }
 

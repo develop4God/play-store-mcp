@@ -22,10 +22,11 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
 
     fun deploy(request: DeployRequest): CommandResult {
         if (!request.confirm) {
+            val held = heldNote(request.track)
             val sizeMb = File(request.apkPath).length() / BYTES_PER_MB
             return dryRun(
                 "upload ${request.apkPath} (${sizeMb} MB) to the ${request.track} track of " +
-                    "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}"
+                    "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}$held"
             )
         }
         return toCommandResult(publisher.deploy(request))
@@ -40,6 +41,23 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         }
         return toCommandResult(publisher.promote(request))
     }
+
+    fun updateReleaseNotes(request: UpdateReleaseNotesRequest): CommandResult {
+        if (!request.confirm) {
+            return dryRun(
+                "replace the release notes of version ${request.versionCode} on the ${request.track} track of " +
+                    "${request.packageName} with notes in ${request.releaseNotes.keys}${heldNote(request.track)}"
+            )
+        }
+        return toCommandResult(publisher.updateReleaseNotes(request))
+    }
+
+    private fun heldNote(track: String) =
+        if (TrackPolicy.holdsForReview(track)) {
+            " (production: saved as a draft only, NOT sent for review; a human sends it in the Play Console)"
+        } else {
+            ""
+        }
 
     private fun dryRun(plan: String) = CommandResult(
         executed = false,

@@ -32,10 +32,27 @@ class PromoteRequestTest {
     }
 
     @Test
-    fun `promoting to production or beta is rejected`() {
-        listOf("production", "beta").forEach { target ->
-            assertFailsWith<InvalidRequestException>("toTrack '$target'") {
-                PromoteRequest.parse(args("toTrack" to JsonPrimitive(target)))
+    fun `internal to beta and alpha to beta are allowed`() {
+        listOf("internal" to "beta", "alpha" to "beta").forEach { (from, to) ->
+            val request = PromoteRequest.parse(args("fromTrack" to JsonPrimitive(from), "toTrack" to JsonPrimitive(to)))
+            assertEquals(from to to, request.fromTrack to request.toTrack)
+        }
+    }
+
+    @Test
+    fun `promoting to production is rejected`() {
+        listOf("internal", "alpha", "beta").forEach { from ->
+            assertFailsWith<InvalidRequestException>("from '$from'") {
+                PromoteRequest.parse(args("fromTrack" to JsonPrimitive(from), "toTrack" to JsonPrimitive("production")))
+            }
+        }
+    }
+
+    @Test
+    fun `promoting backwards from beta is rejected`() {
+        listOf("internal", "alpha").forEach { to ->
+            assertFailsWith<InvalidRequestException>("to '$to'") {
+                PromoteRequest.parse(args("fromTrack" to JsonPrimitive("beta"), "toTrack" to JsonPrimitive(to)))
             }
         }
     }

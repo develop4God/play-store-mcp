@@ -77,7 +77,7 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
             val release = TrackRelease().apply {
                 name = "Release $versionCode"
                 versionCodes = listOf(versionCode)
-                status = "completed"
+                status = TrackPolicy.releaseStatusFor(request.track)
                 if (request.releaseNotes.isNotEmpty()) {
                     releaseNotes = request.releaseNotes.map { (language, text) ->
                         LocalizedText().apply {
@@ -88,7 +88,11 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
                 }
             }
             setTrack(request.packageName, editId, request.track, release)
-            versionCode to "Uploaded and released to ${request.track}"
+            versionCode to if (TrackPolicy.holdsForReview(request.track)) {
+                "Uploaded and saved as a draft on ${request.track}"
+            } else {
+                "Uploaded and released to ${request.track}"
+            }
         }
     }
 
@@ -114,6 +118,34 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
         }
     }
 
+    override fun updateReleaseNotes(request: UpdateReleaseNotesRequest): PlayStoreDeploymentResult {
+        logger.info("Updating release notes on the {} track of {}", request.track, request.packageName)
+        return runEdit(request.packageName, request.track) { editId ->
+            val track = try {
+                publisher.edits().tracks().get(request.packageName, editId, request.track).execute()
+            } catch (e: GoogleJsonResponseException) {
+                if (e.statusCode == HTTP_NOT_FOUND) throw PlayStoreException("Track ${request.track} has no releases") else throw e
+            }
+            val releases = track.releases.orEmpty()
+            val matches = releases.filter { it.versionCodes.orEmpty().contains(request.versionCode) }
+            val target = matches.find { it.status == "draft" } ?: matches.firstOrNull()
+                ?: throw PlayStoreException("Version ${request.versionCode} not found in ${request.track}")
+            if (TrackPolicy.holdsForReview(request.track) && target.status != "draft") {
+                throw PlayStoreException(
+                    "Only draft releases can be edited on ${request.track}; ${request.versionCode} is ${target.status}"
+                )
+            }
+            target.releaseNotes = request.releaseNotes.map { (language, text) ->
+                LocalizedText().apply {
+                    this.language = language
+                    this.text = text
+                }
+            }
+            publisher.edits().tracks().update(request.packageName, editId, request.track, track.setReleases(releases)).execute()
+            request.versionCode to "Release notes updated on ${request.track}"
+        }
+    }
+
     /** Uploads the bundle or APK and returns the version code Play assigned from the file itself. */
     private fun upload(request: DeployRequest, editId: String): Long {
         val file = File(request.apkPath)
@@ -126,8 +158,7 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
     }
 
     /**
-     * Sets [release] on the track without dropping other work in progress: a new completed release
-     * supersedes the previous completed one, but drafts, staged and halted releases are kept.
+     * Sets [release] on the track without dropping other work in progress; see [TrackMerge].
      */
     private fun setTrack(packageName: String, editId: String, trackName: String, release: TrackRelease) {
         val existing = try {
@@ -135,12 +166,9 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
         } catch (e: GoogleJsonResponseException) {
             if (e.statusCode == HTTP_NOT_FOUND) emptyList() else throw e
         }
-        val kept = existing.filter { other ->
-            other.status != "completed" && other.versionCodes.orEmpty().none { it in release.versionCodes }
-        }
         val track = Track().apply {
             track = trackName
-            releases = kept + release
+            releases = TrackMerge.releasesAfter(existing, release)
         }
         publisher.edits().tracks().update(packageName, editId, trackName, track).execute()
     }
@@ -156,9 +184,16 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
             val id = publisher.edits().insert(packageName, null).execute().id
             editId = id
             val (versionCode, message) = block(id)
-            publisher.edits().commit(packageName, id).execute()
+            publisher.edits().commit(packageName, id)
+                .setChangesNotSentForReview(TrackPolicy.holdsForReview(track))
+                .execute()
             editId = null
-            PlayStoreDeploymentResult(true, id, packageName, track, versionCode, message)
+            val held = if (TrackPolicy.holdsForReview(track)) {
+                " It is NOT sent for review: send it for review in the Play Console."
+            } else {
+                ""
+            }
+            PlayStoreDeploymentResult(true, id, packageName, track, versionCode, message + held)
         } catch (e: Exception) {
             logger.error("Play operation failed: {}", e.message)
             editId?.let { runCatching { publisher.edits().delete(packageName, it).execute() } }

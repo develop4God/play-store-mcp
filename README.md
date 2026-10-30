@@ -1,12 +1,14 @@
 # Play Store MCP Server
 
-> **Provenance:** this is a local, modified copy of [devexpert-io/play-store-mcp](https://github.com/devexpert-io/play-store-mcp) (MIT, © 2025 DevExpert), taken at commit `b36fad39b4b636fb1948dc86372e03458661b3d6` after a manual source audit. It has no upstream link. The original `LICENSE` is kept unchanged. Changes from upstream are listed in `CHANGES.md`.
+> **Credit:** this server is a fork of [devexpert-io/play-store-mcp](https://github.com/devexpert-io/play-store-mcp) by the [DevExpert](https://github.com/devexpert-io) team (MIT, © 2025 DevExpert). Thank you for open-sourcing the original: it gave us a working MCP + Google Play foundation to build on. We took it at commit `b36fad39b4b636fb1948dc86372e03458661b3d6` after a manual source audit, and the original `LICENSE` is kept unchanged. Everything we changed is listed in [CHANGES.md](CHANGES.md).
+>
+> This fork is maintained independently by [develop4God](https://github.com/develop4God) and is not affiliated with or endorsed by DevExpert.
 
 An MCP (Model Context Protocol) server that enables interaction with Google Play Console to deploy and manage Android applications.
 
 ## Safety model
 
-- Writes are limited to testing tracks: `deploy_app` accepts `internal` and `alpha`; `promote_release` only `internal` → `alpha`. `production` and `beta` are rejected, and the rule is enforced in the request types, not only in the tool schema.
+- Writes are limited to `internal`, `alpha`, `beta` and `production`. On `production` the server only saves a **draft** and commits with `changesNotSentForReview=true`: nothing is sent to Google review or reaches users until a human clicks "Send for review" in the Play Console. Only draft releases can be edited there. `promote_release` only does `internal` → `alpha`, `internal` → `beta`, `alpha` → `beta`. The rules are enforced in the request types and client, not only in the tool schema.
 - Every write is a **dry run** unless `confirm=true` is passed. A dry run validates input only and never contacts Google.
 - The version code is read from the uploaded file, not supplied by the caller.
 - Required arguments fail with an error; there are no silent defaults.
@@ -15,33 +17,46 @@ An MCP (Model Context Protocol) server that enables interaction with Google Play
 ## What is this?
 
 This MCP server provides tools to:
-- Upload an AAB/APK to a testing track
-- Promote a completed release from internal to alpha
+- Upload an AAB/APK to a testing track (`internal`, `alpha` or `beta`)
+- Promote a completed release `internal → alpha`, `internal → beta` or `alpha → beta`
+- Edit the release notes of an existing release
 - Query the status of existing releases
+
+Production is held back by design: uploads there are drafts that are not sent for review; the final step stays a human action in the Play Console.
 
 ## Available Tools
 
 ### 1. `deploy_app`
-Uploads a new version to a testing track.
+Uploads a new version to a track. On `production` it is saved as a draft and never sent for review.
 
 **Parameters:**
 - `packageName` (string): Application id (e.g., com.example.myapp)
-- `track` (string): `internal` or `alpha`
+- `track` (string): `internal`, `alpha`, `beta` or `production` (draft, not sent for review)
 - `apkPath` (string): Absolute path to the `.aab` or `.apk` file
 - `releaseNotes` (object, optional): Language tag to text, e.g. `{"en-US": "Fixes", "es-ES": "Correcciones"}`
 - `confirm` (boolean, optional): Must be `true` to upload; default `false` (dry run)
 
 ### 2. `promote_release`
-Promotes a completed release from `internal` to `alpha`.
+Promotes a completed release: `internal → alpha`, `internal → beta` or `alpha → beta`.
 
 **Parameters:**
 - `packageName` (string): Application id
-- `fromTrack` (string): `internal`
-- `toTrack` (string): `alpha`
+- `fromTrack` (string): `internal` or `alpha`
+- `toTrack` (string): `alpha` or `beta`
 - `versionCode` (integer): Version code of the release to promote
 - `confirm` (boolean, optional): Must be `true` to promote; default `false` (dry run)
 
-### 3. `get_releases`
+### 3. `update_release_notes`
+Replaces the release notes of an existing release on a testing track.
+
+**Parameters:**
+- `packageName` (string): Application id
+- `track` (string): `internal`, `alpha`, `beta` or `production` (drafts only)
+- `versionCode` (integer): Version code of the release to edit
+- `releaseNotes` (object): Language tag to text, e.g. `{"en-US": "Fixes", "es-ES": "Correcciones"}`
+- `confirm` (boolean, optional): Must be `true` to update; default `false` (dry run)
+
+### 4. `get_releases`
 Lists the releases on every track (read-only).
 
 **Parameters:**
@@ -126,7 +141,7 @@ To build the project:
 
 This will generate the JAR file at `build/libs/play-store-mcp-all.jar`.
 
-You can also download the `jar` from the latest [release](https://github.com/devexpert-io/play-store-mcp/releases).
+Run the tests with `./gradlew test` (they use a fake publisher: no credentials or network needed).
 
 ## Usage
 
@@ -138,9 +153,9 @@ If you want to get the current releases of the App:
 
 > Let me know what versions of com.example.myapp are released in the Play Store.
 
-To release a new version of the App to the alpha channel, you can say:
+To release a new version of the App to the beta (open testing) channel, you can say:
 
-> Upgrade the version of the App, build the AAB, and upload it to the alpha channel.
+> Upgrade the version of the App, build the AAB, and upload it to the beta channel.
 
 Every write first answers as a dry run; confirm it to execute.
 
@@ -168,6 +183,10 @@ Ensure the service account is properly configured in Google Play Console with th
 ### Error: "Package name not found"
 Verify that the package name is correct and the application is configured in Play Console.
 
+## Acknowledgements
+
+Built on [devexpert-io/play-store-mcp](https://github.com/devexpert-io/play-store-mcp) by DevExpert. If you find this useful, please also star the original.
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. The original copyright notice (© 2025 DevExpert) is preserved, as the license requires.

@@ -13,12 +13,25 @@ import java.io.File
 class InvalidRequestException(message: String) : Exception(message)
 
 /**
- * Tracks this server may write to, and the only promotion it may perform.
- * Production and open testing (beta) are deliberately unreachable.
+ * Tracks this server may write to, and the only promotions it may perform.
+ *
+ * Production is reachable only as a held draft: the release is saved as a draft and the edit is committed
+ * with changesNotSentForReview, so nothing reaches Google review or users until a human sends it for
+ * review in the Play Console. Promotion never targets production.
  */
 object TrackPolicy {
-    val deployableTracks = setOf("internal", "alpha")
-    val allowedPromotions = setOf("internal" to "alpha")
+    private const val PRODUCTION = "production"
+
+    val deployableTracks = setOf("internal", "alpha", "beta", PRODUCTION)
+    val allowedPromotions = setOf("internal" to "alpha", "internal" to "beta", "alpha" to "beta")
+    val promotionSources = allowedPromotions.map { it.first }.toSet()
+    val promotionTargets = allowedPromotions.map { it.second }.toSet()
+
+    val notesEditableTracks = deployableTracks
+
+    fun holdsForReview(track: String) = track == PRODUCTION
+
+    fun releaseStatusFor(track: String) = if (holdsForReview(track)) "draft" else "completed"
 }
 
 /**
@@ -95,6 +108,34 @@ data class PromoteRequest(
     }
 }
 
+data class UpdateReleaseNotesRequest(
+    val packageName: String,
+    val track: String,
+    val versionCode: Long,
+    val releaseNotes: Map<String, String>,
+    val confirm: Boolean
+) {
+    init {
+        validatePackageName(packageName)
+        if (track !in TrackPolicy.notesEditableTracks) {
+            throw InvalidRequestException("track must be one of ${TrackPolicy.notesEditableTracks}, got '$track'")
+        }
+        if (versionCode <= 0) throw InvalidRequestException("versionCode must be a positive integer")
+        if (releaseNotes.isEmpty()) throw InvalidRequestException("releaseNotes must not be empty")
+    }
+
+    companion object {
+        fun parse(args: Map<String, JsonElement>) = UpdateReleaseNotesRequest(
+            packageName = args.requireString("packageName"),
+            track = args.requireString("track"),
+            versionCode = args.requireString("versionCode").toLongOrNull()
+                ?: throw InvalidRequestException("versionCode must be a positive integer"),
+            releaseNotes = args.requireReleaseNotes(),
+            confirm = args.optionalConfirm()
+        )
+    }
+}
+
 private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 fun validatePackageName(name: String): String {
@@ -112,6 +153,11 @@ private fun Map<String, JsonElement>.optionalConfirm(): Boolean {
     val primitive = this["confirm"] as? JsonPrimitive ?: return false
     if (primitive.isString) throw InvalidRequestException("confirm must be a boolean")
     return primitive.booleanOrNull ?: throw InvalidRequestException("confirm must be a boolean")
+}
+
+private fun Map<String, JsonElement>.requireReleaseNotes(): Map<String, String> {
+    if ("releaseNotes" !in this) throw InvalidRequestException("releaseNotes is required")
+    return optionalReleaseNotes()
 }
 
 private fun Map<String, JsonElement>.optionalReleaseNotes(): Map<String, String> {
