@@ -96,13 +96,13 @@ Lists the releases on every track (read-only).
 #### Step 4: Configure permissions in Google Play Console
 1. Go to [Google Play Console](https://play.google.com/console)
 2. Select your developer account
-3. Go to "Users and Permssions"
+3. Go to "Users and permissions"
 4. Click "Invite new users"
 5. Add the email of the service account
 6. Click "Invite User"
-8. Configure the necessary permissions:
+7. Configure the necessary permissions:
    - **App permissions**: Select the apps it can manage
-   - **Account permissions**: Grant "View app information" and the permissions aunder "Versions"
+   - **Account permissions**: Grant "View app information" and the permissions under "Versions"
 
 More permissions may be required when new features are released.
 
@@ -168,7 +168,7 @@ Every write first answers as a dry run; confirm it to execute.
 
 ## Requirements
 
-- Java 8 or higher
+- Java 17 or higher
 - Google Play Console developer account
 - Google Cloud project with Play Developer API enabled
 - Applications already published in Play Console (at least as drafts)
@@ -186,6 +186,9 @@ Verify that the path in `PLAY_STORE_SERVICE_ACCOUNT_KEY_PATH` is correct and the
 
 ### Error: "The caller does not have permission"
 Ensure the service account is properly configured in Google Play Console with the necessary permissions.
+
+### Error: "Service account key file must not be accessible by group or others"
+Run `chmod 600` on the key file; the server refuses to start while group or others can read or write it.
 
 ### Error: "Package name not found"
 Verify that the package name is correct and the application is configured in Play Console.
