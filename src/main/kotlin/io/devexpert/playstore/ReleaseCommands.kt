@@ -25,8 +25,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             val sizeMb = File(request.apkPath).length() / BYTES_PER_MB
             return dryRun(
                 "upload ${request.apkPath} (${sizeMb} MB) to the ${request.track} track of " +
-                    "${request.packageName} at ${(request.rolloutPercentage * 100).toInt()}% rollout, " +
-                    "release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}"
+                    "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}"
             )
         }
         return toCommandResult(publisher.deploy(request))
@@ -45,7 +44,9 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
     private fun dryRun(plan: String) = CommandResult(
         executed = false,
         success = true,
-        message = "DRY RUN - nothing was sent to Google Play.\nWould $plan.\nRun again with confirm=true to execute."
+        message = "DRY RUN - nothing was sent to Google Play.\nWould $plan.\n" +
+            "Only the input was validated: credentials, permissions, version code and track state are not checked " +
+            "until you run again with confirm=true."
     )
 
     private fun toCommandResult(result: PlayStoreDeploymentResult) = CommandResult(

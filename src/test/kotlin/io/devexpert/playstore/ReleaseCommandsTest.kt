@@ -41,7 +41,7 @@ class ReleaseCommandsTest {
 
     private fun deployRequest(confirm: Boolean): DeployRequest {
         val file = File.createTempFile("app", ".aab").also { tempFiles += it }
-        return DeployRequest("com.example.app", "internal", file.absolutePath, emptyMap(), 1.0, confirm)
+        return DeployRequest("com.example.app", "internal", file.absolutePath, emptyMap(), confirm)
     }
 
     private fun promoteRequest(confirm: Boolean) =
@@ -58,6 +58,13 @@ class ReleaseCommandsTest {
         assertContains(result.message, "DRY RUN")
         assertContains(result.message, "confirm=true")
         assertContains(result.message, "internal")
+    }
+
+    @Test
+    fun `dry run says what it did not check so it gives no false assurance`() {
+        val result = ReleaseCommands(FakePublisher()).promote(promoteRequest(confirm = false))
+
+        assertContains(result.message, "not checked")
     }
 
     @Test

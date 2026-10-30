@@ -6,11 +6,11 @@ import io.devexpert.playstore.InvalidRequestException
 import io.devexpert.playstore.PromoteRequest
 import io.devexpert.playstore.ReleaseCommands
 import io.devexpert.playstore.TrackPolicy
-import io.devexpert.playstore.validatePackageName
 import io.modelcontextprotocol.kotlin.sdk.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.TextContent
 import io.modelcontextprotocol.kotlin.sdk.Tool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -34,7 +34,6 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                     put("track", property("string", "Testing track", enum = TrackPolicy.deployableTracks))
                     put("apkPath", property("string", "Absolute path to the .aab or .apk file"))
                     put("releaseNotes", property("object", "Release notes as {\"en-US\": \"text\", \"es-ES\": \"texto\"}"))
-                    put("rolloutPercentage", property("number", "Fraction of testers in (0.0, 1.0], default 1.0"))
                     put("confirm", property("boolean", "Must be true to actually upload; default false (dry run)"))
                 },
                 required = listOf("packageName", "track", "apkPath")
@@ -74,7 +73,7 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
             handle {
                 val packageName = (request.arguments["packageName"] as? JsonPrimitive)?.content
                     ?: throw InvalidRequestException("packageName is required")
-                CommandResult(executed = true, success = true, message = commands.listReleases(validatePackageName(packageName)))
+                CommandResult(executed = true, success = true, message = commands.listReleases(packageName))
             }
         }
 
@@ -86,10 +85,12 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
         return try {
             val result = withContext(Dispatchers.IO) { block() }
             CallToolResult(content = listOf(TextContent(text = result.message)), isError = !result.success)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: InvalidRequestException) {
             CallToolResult(content = listOf(TextContent(text = "Invalid request: ${e.message}")), isError = true)
         } catch (e: Exception) {
-            logger.error("Tool call failed: {}", e.message)
+            logger.error("Tool call failed: {}", e.javaClass.simpleName)
             CallToolResult(content = listOf(TextContent(text = "Error: ${e.message}")), isError = true)
         }
     }

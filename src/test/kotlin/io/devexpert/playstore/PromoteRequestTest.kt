@@ -71,6 +71,16 @@ class PromoteRequestTest {
     }
 
     @Test
+    fun `constructing a promote request directly cannot bypass the policy`() {
+        assertFailsWith<InvalidRequestException> {
+            PromoteRequest("com.example.app", "alpha", "production", 141, true)
+        }
+        assertFailsWith<InvalidRequestException> {
+            PromoteRequest("com.example.app", "internal", "alpha", 0, true)
+        }
+    }
+
+    @Test
     fun `malformed package name is rejected`() {
         assertFailsWith<InvalidRequestException> {
             PromoteRequest.parse(args("packageName" to JsonPrimitive("bad name")))

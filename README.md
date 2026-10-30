@@ -4,46 +4,48 @@
 
 An MCP (Model Context Protocol) server that enables interaction with Google Play Console to deploy and manage Android applications.
 
-## ⚠️ Development Status
+## Safety model
 
-**Although it's currently functional, this MCP server is under development.** Please use with caution and thoroughly test in non-production environments first. 
-
-If you encounter any issues or have feature requests, please [open an issue](https://github.com/devexpert-io/play-store-mcp/issues) on GitHub. Your feedback is valuable for improving this project.
+- Writes are limited to testing tracks: `deploy_app` accepts `internal` and `alpha`; `promote_release` only `internal` → `alpha`. `production` and `beta` are rejected, and the rule is enforced in the request types, not only in the tool schema.
+- Every write is a **dry run** unless `confirm=true` is passed. A dry run validates input only and never contacts Google.
+- The version code is read from the uploaded file, not supplied by the caller.
+- Required arguments fail with an error; there are no silent defaults.
+- Existing drafts, staged and halted releases on a track are kept; a new completed release supersedes the previous completed one.
 
 ## What is this?
 
 This MCP server provides tools to:
-- Deploy new versions of Android applications
-- Promote releases between tracks (internal → alpha → beta → production)
+- Upload an AAB/APK to a testing track
+- Promote a completed release from internal to alpha
 - Query the status of existing releases
 
 ## Available Tools
 
 ### 1. `deploy_app`
-Deploys a new version of an application to the Play Store.
+Uploads a new version to a testing track.
 
 **Parameters:**
-- `packageName` (string): App package name (e.g., com.example.myapp)
-- `track` (string): Release track (internal, alpha, beta, production)
-- `apkPath` (string): Path to APK or AAB file
-- `versionCode` (integer): Version code (must be higher than current)
-- `releaseNotes` (string, optional): Release notes
-- `rolloutPercentage` (number, optional): Rollout percentage (0.0 to 1.0, default: 1.0 for full rollout)
+- `packageName` (string): Application id (e.g., com.example.myapp)
+- `track` (string): `internal` or `alpha`
+- `apkPath` (string): Absolute path to the `.aab` or `.apk` file
+- `releaseNotes` (object, optional): Language tag to text, e.g. `{"en-US": "Fixes", "es-ES": "Correcciones"}`
+- `confirm` (boolean, optional): Must be `true` to upload; default `false` (dry run)
 
 ### 2. `promote_release`
-Promotes an existing version from one track to another.
+Promotes a completed release from `internal` to `alpha`.
 
 **Parameters:**
-- `packageName` (string): App package name
-- `fromTrack` (string): Source track (internal, alpha, beta)
-- `toTrack` (string): Target track (alpha, beta, production)
-- `versionCode` (integer): Version code to promote
+- `packageName` (string): Application id
+- `fromTrack` (string): `internal`
+- `toTrack` (string): `alpha`
+- `versionCode` (integer): Version code of the release to promote
+- `confirm` (boolean, optional): Must be `true` to promote; default `false` (dry run)
 
 ### 3. `get_releases`
-Gets the current status of app releases and deployments for a specific package.
+Lists the releases on every track (read-only).
 
 **Parameters:**
-- `packageName` (string): App package name (e.g., com.example.myapp)
+- `packageName` (string): Application id (e.g., com.example.myapp)
 
 ## Setup
 
@@ -103,8 +105,7 @@ Add the following configuration to your MCP configuration file:
         "/path/to/play-store-mcp-all.jar"
       ],
       "env": {
-        "PLAY_STORE_SERVICE_ACCOUNT_KEY_PATH": "/path/to/service-account-key.json",
-        "PLAY_STORE_DEFAULT_TRACK": "internal"
+        "PLAY_STORE_SERVICE_ACCOUNT_KEY_PATH": "/path/to/service-account-key.json"
       }
     }
   }
@@ -113,8 +114,7 @@ Add the following configuration to your MCP configuration file:
 
 ### Environment Variables
 
-- `PLAY_STORE_SERVICE_ACCOUNT_KEY_PATH`: Path to the service account JSON file (required)
-- `PLAY_STORE_DEFAULT_TRACK`: Default track for deployments (optional, default: "internal")
+- `PLAY_STORE_SERVICE_ACCOUNT_KEY_PATH`: Path to the service account JSON file (required). The file must not be readable by group or others (`chmod 600`); the server refuses to start otherwise.
 
 ## Building
 
@@ -142,9 +142,7 @@ To release a new version of the App to the alpha channel, you can say:
 
 > Upgrade the version of the App, build the AAB, and upload it to the alpha channel.
 
-To deploy with a gradual rollout (e.g., 50% of users):
-
-> Update the App version, compile the AAB, and publish it to the Play Store on the alpha channel with a 50% rollout, using the @release_notes.txt.
+Every write first answers as a dry run; confirm it to execute.
 
 ## Requirements
 

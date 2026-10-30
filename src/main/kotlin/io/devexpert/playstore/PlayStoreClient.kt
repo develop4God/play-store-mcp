@@ -1,5 +1,6 @@
 package io.devexpert.playstore
 
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.http.FileContent
 import com.google.api.client.http.HttpRequestInitializer
@@ -65,7 +66,7 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
                 }
             }
         } finally {
-            edits.delete(packageName, editId).execute()
+            runCatching { edits.delete(packageName, editId).execute() }
         }
     }
 
@@ -76,12 +77,7 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
             val release = TrackRelease().apply {
                 name = "Release $versionCode"
                 versionCodes = listOf(versionCode)
-                if (request.rolloutPercentage < 1.0) {
-                    status = "inProgress"
-                    userFraction = request.rolloutPercentage
-                } else {
-                    status = "completed"
-                }
+                status = "completed"
                 if (request.releaseNotes.isNotEmpty()) {
                     releaseNotes = request.releaseNotes.map { (language, text) ->
                         LocalizedText().apply {
@@ -102,6 +98,11 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
             val source = publisher.edits().tracks().get(request.packageName, editId, request.fromTrack).execute()
             val sourceRelease = source.releases.orEmpty().find { it.versionCodes.orEmpty().contains(request.versionCode) }
                 ?: throw PlayStoreException("Version ${request.versionCode} not found in ${request.fromTrack}")
+            if (sourceRelease.status != "completed") {
+                throw PlayStoreException(
+                    "Only completed releases can be promoted; ${request.versionCode} is ${sourceRelease.status}"
+                )
+            }
             val release = TrackRelease().apply {
                 name = sourceRelease.name
                 versionCodes = sourceRelease.versionCodes
@@ -124,10 +125,22 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
         }.toLong()
     }
 
+    /**
+     * Sets [release] on the track without dropping other work in progress: a new completed release
+     * supersedes the previous completed one, but drafts, staged and halted releases are kept.
+     */
     private fun setTrack(packageName: String, editId: String, trackName: String, release: TrackRelease) {
+        val existing = try {
+            publisher.edits().tracks().get(packageName, editId, trackName).execute().releases.orEmpty()
+        } catch (e: GoogleJsonResponseException) {
+            if (e.statusCode == HTTP_NOT_FOUND) emptyList() else throw e
+        }
+        val kept = existing.filter { other ->
+            other.status != "completed" && other.versionCodes.orEmpty().none { it in release.versionCodes }
+        }
         val track = Track().apply {
             track = trackName
-            releases = listOf(release)
+            releases = kept + release
         }
         publisher.edits().tracks().update(packageName, editId, trackName, track).execute()
     }
@@ -155,6 +168,7 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
 
     private companion object {
         const val APPLICATION_NAME = "Play Store MCP Server"
+        const val HTTP_NOT_FOUND = 404
         const val CONNECT_TIMEOUT_MS = 60_000
         const val UPLOAD_READ_TIMEOUT_MS = 600_000
         const val MIME_BINARY = "application/octet-stream"

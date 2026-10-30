@@ -13,3 +13,10 @@ Base: devexpert-io/play-store-mcp @ b36fad39b4b636fb1948dc86372e03458661b3d6 (MI
 9. Untrusted `gradle-wrapper.jar` replaced with one matching Gradle's official checksum (8.14.3).
 10. Removed dead code (`PlayStoreService` "mock data" fallback, unused `defaultTrack`).
 11. Added unit tests with a fake `PlayPublisher`; no credentials or network needed.
+12. The track policy is enforced in the request types' `init`, so it cannot be bypassed by direct construction or `copy`.
+13. Existing draft, staged and halted releases on a track are preserved; only a completed release is superseded. Only completed releases can be promoted.
+14. Staged rollout (`rolloutPercentage`) is rejected: testing tracks do not support it.
+15. `apkPath` must be absolute and is canonicalised; JSON `null` is rejected instead of becoming the text "null".
+16. The dry run states that credentials, permissions, version code and track state are not checked.
+17. The server refuses to start if the key file is missing or readable by group/others.
+18. Coroutine cancellation is no longer swallowed; cleanup failures no longer mask the real result.

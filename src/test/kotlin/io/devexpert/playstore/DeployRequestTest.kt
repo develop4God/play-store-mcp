@@ -1,6 +1,7 @@
 package io.devexpert.playstore
 
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
@@ -42,7 +43,6 @@ class DeployRequestTest {
         assertEquals("com.example.app", request.packageName)
         assertEquals("internal", request.track)
         assertFalse(request.confirm)
-        assertEquals(1.0, request.rolloutPercentage)
         assertTrue(request.releaseNotes.isEmpty())
     }
 
@@ -104,16 +104,40 @@ class DeployRequestTest {
     }
 
     @Test
-    fun `rollout outside 0 exclusive to 1 inclusive is rejected`() {
-        listOf(0.0, -0.1, 1.1).forEach { value ->
-            assertFailsWith<InvalidRequestException>("rollout $value") {
-                DeployRequest.parse(args(overrides = arrayOf("rolloutPercentage" to JsonPrimitive(value))))
+    fun `staged rollout is rejected because testing tracks do not support it`() {
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest.parse(args(overrides = arrayOf("rolloutPercentage" to JsonPrimitive(0.5))))
+        }
+    }
+
+    @Test
+    fun `constructing a request directly cannot bypass the track policy`() {
+        listOf("production", "beta").forEach { track ->
+            assertFailsWith<InvalidRequestException>("track '$track'") {
+                DeployRequest("com.example.app", track, bundle().absolutePath, emptyMap(), true)
             }
         }
-        assertEquals(
-            0.5,
-            DeployRequest.parse(args(overrides = arrayOf("rolloutPercentage" to JsonPrimitive(0.5)))).rolloutPercentage
-        )
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest.parse(args()).copy(track = "production")
+        }
+    }
+
+    @Test
+    fun `relative apkPath is rejected`() {
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest.parse(args(overrides = arrayOf("apkPath" to JsonPrimitive("build/app.aab"))))
+        }
+    }
+
+    @Test
+    fun `json null values are rejected instead of becoming the text null`() {
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest.parse(args(overrides = arrayOf("track" to JsonNull)))
+        }
+        assertFailsWith<InvalidRequestException> {
+            val notes = JsonObject(mapOf("en-US" to JsonNull))
+            DeployRequest.parse(args(overrides = arrayOf("releaseNotes" to notes)))
+        }
     }
 
     @Test
