@@ -15,9 +15,18 @@ data class CommandResult(val executed: Boolean, val success: Boolean, val messag
 class ReleaseCommands(private val publisher: PlayPublisher) {
     private val json = Json { prettyPrint = true }
 
-    fun listReleases(packageName: String): String {
-        val releases = publisher.listReleases(validatePackageName(packageName))
-        return json.encodeToString(ListSerializer(PlayStoreRelease.serializer()), releases)
+    fun listReleases(packageName: String): CommandResult {
+        val validated = validatePackageName(packageName)
+        return try {
+            val releases = publisher.listReleases(validated)
+            CommandResult(
+                executed = true,
+                success = true,
+                message = json.encodeToString(ListSerializer(PlayStoreRelease.serializer()), releases)
+            )
+        } catch (e: Exception) {
+            CommandResult(executed = true, success = false, message = "Operation failed: ${e.message}")
+        }
     }
 
     fun deploy(request: DeployRequest): CommandResult {

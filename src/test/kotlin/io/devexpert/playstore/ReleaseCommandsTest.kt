@@ -97,11 +97,23 @@ class ReleaseCommandsTest {
     fun `listing releases returns json with real version codes`() {
         val release = PlayStoreRelease("internal", "completed", listOf(132L), null, "Release 132")
 
-        val json = ReleaseCommands(FakePublisher(releases = listOf(release))).listReleases("com.example.app")
+        val result = ReleaseCommands(FakePublisher(releases = listOf(release))).listReleases("com.example.app")
 
-        assertContains(json, "\"versionCodes\"")
-        assertContains(json, "132")
-        assertContains(json, "internal")
+        assertTrue(result.success)
+        assertContains(result.message, "\"versionCodes\"")
+        assertContains(result.message, "132")
+        assertContains(result.message, "internal")
+    }
+
+    @Test
+    fun `listing releases reports a publisher failure as a failed result like the write commands`() {
+        val publisher = FakePublisher(failure = IllegalStateException("quota exceeded"))
+
+        val result = ReleaseCommands(publisher).listReleases("com.example.app")
+
+        assertFalse(result.success)
+        assertContains(result.message, "Operation failed")
+        assertContains(result.message, "quota exceeded")
     }
 
     private fun notesRequest(confirm: Boolean) =
