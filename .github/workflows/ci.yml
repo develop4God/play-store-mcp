@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test and coverage floor
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: gradle/actions/wrapper-validation@v4
@@ -20,4 +25,12 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew test koverVerify
+      - run: ./gradlew test koverVerify koverHtmlReport --continue
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            build/reports/kover/html
+            build/reports/tests
+          if-no-files-found: ignore
