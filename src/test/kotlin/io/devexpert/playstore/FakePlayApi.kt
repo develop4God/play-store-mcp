@@ -7,6 +7,7 @@ import com.google.api.client.testing.http.MockHttpTransport
 import com.google.api.client.testing.http.MockLowLevelHttpRequest
 import com.google.api.client.testing.http.MockLowLevelHttpResponse
 import com.google.api.services.androidpublisher.AndroidPublisher
+import java.net.URI
 
 /**
  * An in-process stand-in for the Play Android Publisher REST API, plugged in as the HTTP transport.
@@ -45,18 +46,19 @@ internal class FakePlayApi {
 
     private fun respond(method: String, url: String): MockLowLevelHttpResponse {
         fail(method, url)?.let { return error(it) }
+        val path = URI(url).path
         return when {
             url.contains("upload_id=") -> json("""{"versionCode": $uploadedVersionCode}""")
             url.contains("uploadType=resumable") ->
                 MockLowLevelHttpResponse().setStatusCode(200).addHeader("Location", "$url&upload_id=1")
-            method == "POST" && url.endsWith("/edits") -> json("""{"id": "edit-1"}""")
-            method == "POST" && url.contains(":commit") -> json("""{"id": "edit-1"}""")
+            method == "POST" && path.endsWith("/edits") -> json("""{"id": "edit-1"}""")
+            method == "POST" && path.endsWith(":commit") -> json("""{"id": "edit-1"}""")
             method == "DELETE" -> MockLowLevelHttpResponse().setStatusCode(204)
-            method == "GET" && url.endsWith("/tracks") ->
+            method == "GET" && path.endsWith("/tracks") ->
                 json("""{"tracks": [${tracks.values.joinToString(",")}]}""")
-            method == "GET" && url.contains("/tracks/") ->
-                tracks[url.substringAfterLast("/tracks/").substringBefore("?")]?.let { json(it) } ?: error(404)
-            method == "PUT" && url.contains("/tracks/") -> json("""{}""")
+            method == "GET" && path.contains("/tracks/") ->
+                tracks[path.substringAfterLast("/tracks/")]?.let { json(it) } ?: error(404)
+            method == "PUT" && path.contains("/tracks/") -> json("""{}""")
             else -> error(500)
         }
     }

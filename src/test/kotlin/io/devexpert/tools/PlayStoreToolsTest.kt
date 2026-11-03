@@ -42,7 +42,12 @@ class PlayStoreToolsTest {
             val (clientSide, serverSide) = InMemoryTransport.linkedPair()
             server.connect(serverSide)
             client.connect(clientSide)
-            block(client)
+            try {
+                block(client)
+            } finally {
+                client.close()
+                server.close()
+            }
         }
     }
 
