@@ -12,6 +12,7 @@ An MCP (Model Context Protocol) server that enables interaction with Google Play
 - Every write is a **dry run** unless `confirm=true` is passed. A dry run validates input only and never contacts Google.
 - The version code is read from the uploaded file, not supplied by the caller.
 - Required arguments fail with an error; there are no silent defaults.
+- A release note over 500 characters in any language is rejected even in a dry run, so it cannot fail only at the real upload.
 - Existing drafts, staged and halted releases on a track are kept; a new completed release supersedes the previous completed one.
 
 ## What is this?
