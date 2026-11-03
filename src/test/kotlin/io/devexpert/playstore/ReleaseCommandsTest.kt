@@ -9,36 +9,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class FakePublisher(
-    private val deployResult: PlayStoreDeploymentResult? = null,
-    private val releases: List<PlayStoreRelease> = emptyList()
-) : PlayPublisher {
-    val deployCalls = mutableListOf<DeployRequest>()
-    val promoteCalls = mutableListOf<PromoteRequest>()
-    val notesCalls = mutableListOf<UpdateReleaseNotesRequest>()
-    val listCalls = mutableListOf<String>()
-
-    override fun listReleases(packageName: String): List<PlayStoreRelease> {
-        listCalls += packageName
-        return releases
-    }
-
-    override fun deploy(request: DeployRequest): PlayStoreDeploymentResult {
-        deployCalls += request
-        return deployResult ?: PlayStoreDeploymentResult(true, "edit-1", request.packageName, request.track, 141, "ok")
-    }
-
-    override fun promote(request: PromoteRequest): PlayStoreDeploymentResult {
-        promoteCalls += request
-        return PlayStoreDeploymentResult(true, "edit-2", request.packageName, request.toTrack, request.versionCode, "ok")
-    }
-
-    override fun updateReleaseNotes(request: UpdateReleaseNotesRequest): PlayStoreDeploymentResult {
-        notesCalls += request
-        return PlayStoreDeploymentResult(true, "edit-3", request.packageName, request.track, request.versionCode, "ok")
-    }
-}
-
 class ReleaseCommandsTest {
     private val tempFiles = mutableListOf<File>()
 

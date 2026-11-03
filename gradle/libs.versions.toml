@@ -10,6 +10,7 @@ logback = "1.5.18"
 google-play-console = "v3-rev20250710-2.0.0"
 google-auth-library = "1.35.0"
 junit = "5.12.2"
+kover = "0.9.1"
 
 [libraries]
 mcp-kotlin-sdk = { group = "io.modelcontextprotocol", name = "kotlin-sdk", version.ref = "mcp-kotlin-sdk" }
@@ -27,3 +28,4 @@ junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.r
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadow" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
