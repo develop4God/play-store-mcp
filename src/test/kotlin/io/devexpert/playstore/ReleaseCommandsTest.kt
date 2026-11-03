@@ -9,36 +9,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class FakePublisher(
-    private val deployResult: PlayStoreDeploymentResult? = null,
-    private val releases: List<PlayStoreRelease> = emptyList()
-) : PlayPublisher {
-    val deployCalls = mutableListOf<DeployRequest>()
-    val promoteCalls = mutableListOf<PromoteRequest>()
-    val notesCalls = mutableListOf<UpdateReleaseNotesRequest>()
-    val listCalls = mutableListOf<String>()
-
-    override fun listReleases(packageName: String): List<PlayStoreRelease> {
-        listCalls += packageName
-        return releases
-    }
-
-    override fun deploy(request: DeployRequest): PlayStoreDeploymentResult {
-        deployCalls += request
-        return deployResult ?: PlayStoreDeploymentResult(true, "edit-1", request.packageName, request.track, 141, "ok")
-    }
-
-    override fun promote(request: PromoteRequest): PlayStoreDeploymentResult {
-        promoteCalls += request
-        return PlayStoreDeploymentResult(true, "edit-2", request.packageName, request.toTrack, request.versionCode, "ok")
-    }
-
-    override fun updateReleaseNotes(request: UpdateReleaseNotesRequest): PlayStoreDeploymentResult {
-        notesCalls += request
-        return PlayStoreDeploymentResult(true, "edit-3", request.packageName, request.track, request.versionCode, "ok")
-    }
-}
-
 class ReleaseCommandsTest {
     private val tempFiles = mutableListOf<File>()
 
@@ -127,11 +97,23 @@ class ReleaseCommandsTest {
     fun `listing releases returns json with real version codes`() {
         val release = PlayStoreRelease("internal", "completed", listOf(132L), null, "Release 132")
 
-        val json = ReleaseCommands(FakePublisher(releases = listOf(release))).listReleases("com.example.app")
+        val result = ReleaseCommands(FakePublisher(releases = listOf(release))).listReleases("com.example.app")
 
-        assertContains(json, "\"versionCodes\"")
-        assertContains(json, "132")
-        assertContains(json, "internal")
+        assertTrue(result.success)
+        assertContains(result.message, "\"versionCodes\"")
+        assertContains(result.message, "132")
+        assertContains(result.message, "internal")
+    }
+
+    @Test
+    fun `listing releases reports a publisher failure as a failed result like the write commands`() {
+        val publisher = FakePublisher(failure = IllegalStateException("quota exceeded"))
+
+        val result = ReleaseCommands(publisher).listReleases("com.example.app")
+
+        assertFalse(result.success)
+        assertContains(result.message, "Operation failed")
+        assertContains(result.message, "quota exceeded")
     }
 
     private fun notesRequest(confirm: Boolean) =

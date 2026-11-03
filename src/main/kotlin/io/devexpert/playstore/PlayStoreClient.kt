@@ -19,35 +19,12 @@ import java.io.FileInputStream
 /**
  * Talks to the Google Play Android Publisher API. The only network peer is Google.
  */
-class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher {
+class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPublisher) : PlayPublisher {
+    constructor(serviceAccountKeyPath: String) : this({ initializePublisher(serviceAccountKeyPath) })
+
     private val logger = LoggerFactory.getLogger(PlayStoreClient::class.java)
 
-    private val publisher: AndroidPublisher by lazy { initializePublisher() }
-
-    private fun initializePublisher(): AndroidPublisher {
-        val keyFile = File(serviceAccountKeyPath)
-        if (!keyFile.isFile) throw PlayStoreException("Service account key file not found")
-
-        return try {
-            val credential = FileInputStream(keyFile).use { stream ->
-                ServiceAccountCredentials.fromStream(stream)
-                    .createScoped(listOf(AndroidPublisherScopes.ANDROIDPUBLISHER))
-            }
-            val credentialsAdapter = HttpCredentialsAdapter(credential)
-            val requestInitializer = HttpRequestInitializer { request ->
-                credentialsAdapter.initialize(request)
-                request.connectTimeout = CONNECT_TIMEOUT_MS
-                request.readTimeout = UPLOAD_READ_TIMEOUT_MS
-            }
-            AndroidPublisher.Builder(
-                GoogleNetHttpTransport.newTrustedTransport(),
-                GsonFactory.getDefaultInstance(),
-                requestInitializer
-            ).setApplicationName(APPLICATION_NAME).build()
-        } catch (e: Exception) {
-            throw PlayStoreException("Failed to initialize API client: ${e.message}", e)
-        }
-    }
+    private val publisher: AndroidPublisher by lazy(publisherSupplier)
 
     override fun listReleases(packageName: String): List<PlayStoreRelease> {
         val edits = publisher.edits()
@@ -202,6 +179,31 @@ class PlayStoreClient(private val serviceAccountKeyPath: String) : PlayPublisher
     }
 
     private companion object {
+        fun initializePublisher(serviceAccountKeyPath: String): AndroidPublisher {
+            val keyFile = File(serviceAccountKeyPath)
+            if (!keyFile.isFile) throw PlayStoreException("Service account key file not found")
+
+            return try {
+                val credential = FileInputStream(keyFile).use { stream ->
+                    ServiceAccountCredentials.fromStream(stream)
+                        .createScoped(listOf(AndroidPublisherScopes.ANDROIDPUBLISHER))
+                }
+                val credentialsAdapter = HttpCredentialsAdapter(credential)
+                val requestInitializer = HttpRequestInitializer { request ->
+                    credentialsAdapter.initialize(request)
+                    request.connectTimeout = CONNECT_TIMEOUT_MS
+                    request.readTimeout = UPLOAD_READ_TIMEOUT_MS
+                }
+                AndroidPublisher.Builder(
+                    GoogleNetHttpTransport.newTrustedTransport(),
+                    GsonFactory.getDefaultInstance(),
+                    requestInitializer
+                ).setApplicationName(APPLICATION_NAME).build()
+            } catch (e: Exception) {
+                throw PlayStoreException("Failed to initialize API client: ${e.message}", e)
+            }
+        }
+
         const val APPLICATION_NAME = "Play Store MCP Server"
         const val HTTP_NOT_FOUND = 404
         const val CONNECT_TIMEOUT_MS = 60_000

@@ -92,7 +92,7 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
             handle {
                 val packageName = (request.arguments["packageName"] as? JsonPrimitive)?.content
                     ?: throw InvalidRequestException("packageName is required")
-                CommandResult(executed = true, success = true, message = commands.listReleases(packageName))
+                commands.listReleases(packageName)
             }
         }
 
