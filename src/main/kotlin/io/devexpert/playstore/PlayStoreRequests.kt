@@ -136,6 +136,9 @@ data class UpdateReleaseNotesRequest(
     }
 }
 
+/** Google Play rejects a release note longer than this, per language. */
+const val MAX_RELEASE_NOTE_CHARACTERS = 500
+
 private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 fun validatePackageName(name: String): String {
@@ -166,7 +169,15 @@ private fun Map<String, JsonElement>.optionalReleaseNotes(): Map<String, String>
         ?: throw InvalidRequestException("releaseNotes must be an object of language tag to text")
     return notes.mapValues { (language, text) ->
         val primitive = text as? JsonPrimitive
-        primitive?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        val content = primitive?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
             ?: throw InvalidRequestException("release notes for '$language' must be non-blank text")
+        val length = content.codePointCount(0, content.length)
+        if (length > MAX_RELEASE_NOTE_CHARACTERS) {
+            throw InvalidRequestException(
+                "release notes for '$language' are $length characters; " +
+                    "Google Play allows at most $MAX_RELEASE_NOTE_CHARACTERS"
+            )
+        }
+        content
     }
 }
