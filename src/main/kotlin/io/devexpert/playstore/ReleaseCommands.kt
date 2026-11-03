@@ -2,6 +2,7 @@ package io.devexpert.playstore
 
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.io.File
 
 /**
@@ -13,6 +14,7 @@ data class CommandResult(val executed: Boolean, val success: Boolean, val messag
  * Applies the confirm gate: writes only reach the [PlayPublisher] when the request says `confirm=true`.
  */
 class ReleaseCommands(private val publisher: PlayPublisher) {
+    private val logger = LoggerFactory.getLogger(ReleaseCommands::class.java)
     private val json = Json { prettyPrint = true }
 
     fun listReleases(packageName: String): CommandResult {
@@ -25,6 +27,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
                 message = json.encodeToString(ListSerializer(PlayStoreRelease.serializer()), releases)
             )
         } catch (e: Exception) {
+            logger.error("Listing releases failed: {}", e.message)
             CommandResult(executed = true, success = false, message = "Operation failed: ${e.message}")
         }
     }
