@@ -13,6 +13,8 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.io.File
 import kotlin.test.AfterTest
@@ -35,7 +37,7 @@ class PlayStoreToolsTest {
         withTimeout(TIMEOUT_MS) {
             val server = Server(
                 Implementation("test-server", "0"),
-                ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false)))
+                ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
             )
             PlayStoreTools(ReleaseCommands(publisher)).registerTools(server)
             val client = Client(Implementation("test-client", "0"))
@@ -58,6 +60,27 @@ class PlayStoreToolsTest {
         val names = withClient(FakePublisher()) { client -> client.listTools()!!.tools.map { it.name } }
 
         assertEquals(setOf("deploy_app", "promote_release", "update_release_notes", "get_releases"), names.toSet())
+    }
+
+    @Test
+    fun `deploy_app schema documents inAppUpdatePriority as an optional integer`() {
+        val schema = withClient(FakePublisher()) { client ->
+            client.listTools()!!.tools.single { it.name == "deploy_app" }.inputSchema
+        }
+
+        val property = schema.properties["inAppUpdatePriority"]!!.jsonObject
+        assertEquals("integer", property["type"]!!.jsonPrimitive.content)
+        assertContains(property["description"]!!.jsonPrimitive.content, "urgent")
+        assertFalse("inAppUpdatePriority" in schema.required.orEmpty())
+    }
+
+    @Test
+    fun `promote_release description says the priority is kept`() {
+        val description = withClient(FakePublisher()) { client ->
+            client.listTools()!!.tools.single { it.name == "promote_release" }.description
+        }
+
+        assertContains(description.orEmpty(), "in-app update priority")
     }
 
     @Test
@@ -100,8 +123,11 @@ class PlayStoreToolsTest {
     fun `promotion to production is rejected`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "fromTrack" to "beta", "toTrack" to "production",
-            "versionCode" to 141, "confirm" to true
+            "packageName" to "com.example.app",
+            "fromTrack" to "beta",
+            "toTrack" to "production",
+            "versionCode" to 141,
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("promote_release", args)!! }
@@ -114,8 +140,11 @@ class PlayStoreToolsTest {
     fun `promote_release with confirm calls the publisher`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "fromTrack" to "internal", "toTrack" to "alpha",
-            "versionCode" to 141, "confirm" to true
+            "packageName" to "com.example.app",
+            "fromTrack" to "internal",
+            "toTrack" to "alpha",
+            "versionCode" to 141,
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("promote_release", args)!! }
@@ -128,8 +157,11 @@ class PlayStoreToolsTest {
     fun `update_release_notes with empty notes is rejected`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "track" to "beta", "versionCode" to 141,
-            "releaseNotes" to buildJsonObject { }, "confirm" to true
+            "packageName" to "com.example.app",
+            "track" to "beta",
+            "versionCode" to 141,
+            "releaseNotes" to buildJsonObject { },
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("update_release_notes", args)!! }
@@ -142,8 +174,11 @@ class PlayStoreToolsTest {
     fun `update_release_notes with confirm calls the publisher`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "track" to "beta", "versionCode" to 141,
-            "releaseNotes" to buildJsonObject { put("en-US", "Fixes") }, "confirm" to true
+            "packageName" to "com.example.app",
+            "track" to "beta",
+            "versionCode" to 141,
+            "releaseNotes" to buildJsonObject { put("en-US", "Fixes") },
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("update_release_notes", args)!! }

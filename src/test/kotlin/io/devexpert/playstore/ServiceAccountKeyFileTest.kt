@@ -14,11 +14,10 @@ class ServiceAccountKeyFileTest {
     @AfterTest
     fun cleanUp() = tempFiles.forEach { it.delete() }
 
-    private fun keyFile(permissions: String): File =
-        Files.createTempFile("key", ".json").toFile().also {
-            tempFiles += it
-            Files.setPosixFilePermissions(it.toPath(), PosixFilePermissions.fromString(permissions))
-        }
+    private fun keyFile(permissions: String): File = Files.createTempFile("key", ".json").toFile().also {
+        tempFiles += it
+        Files.setPosixFilePermissions(it.toPath(), PosixFilePermissions.fromString(permissions))
+    }
 
     @Test
     fun `owner only key file is accepted`() {

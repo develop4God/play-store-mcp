@@ -12,7 +12,7 @@ object ServiceAccountKeyFile {
         PosixFilePermission.GROUP_READ,
         PosixFilePermission.GROUP_WRITE,
         PosixFilePermission.OTHERS_READ,
-        PosixFilePermission.OTHERS_WRITE
+        PosixFilePermission.OTHERS_WRITE,
     )
 
     fun validate(path: String): String {

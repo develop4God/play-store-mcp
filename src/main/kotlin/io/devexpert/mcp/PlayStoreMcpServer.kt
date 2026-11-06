@@ -13,15 +13,15 @@ class PlayStoreMcpServer {
     private val server = Server(
         serverInfo = Implementation(name = "play-store-mcp", version = "1.0.0"),
         options = ServerOptions(
-            capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = true))
-        )
+            capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = true)),
+        ),
     )
 
     fun getServer(): Server = server
 
     fun initialize() {
         val keyPath = System.getenv(KEY_PATH_ENV)
-            ?: throw IllegalStateException("$KEY_PATH_ENV is not set")
+            ?: error("$KEY_PATH_ENV is not set")
         val client = PlayStoreClient(ServiceAccountKeyFile.validate(keyPath))
         PlayStoreTools(ReleaseCommands(client)).registerTools(server)
     }

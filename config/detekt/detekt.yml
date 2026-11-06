@@ -1,0 +1,6 @@
+# Overrides on top of the detekt default config. Keep each override justified.
+
+style:
+  MaxLineLength:
+    # Owned by ktlint (max_line_length in .editorconfig); one tool per rule avoids conflicting limits.
+    active: false

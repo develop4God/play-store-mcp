@@ -14,7 +14,7 @@ class UpdateReleaseNotesRequestTest {
             "packageName" to JsonPrimitive("com.example.app"),
             "track" to JsonPrimitive("beta"),
             "versionCode" to JsonPrimitive(141),
-            "releaseNotes" to JsonObject(mapOf("en-US" to JsonPrimitive("Fixes")))
+            "releaseNotes" to JsonObject(mapOf("en-US" to JsonPrimitive("Fixes"))),
         )
         overrides.forEach { (key, value) -> if (value == null) base.remove(key) else base[key] = value }
         return base

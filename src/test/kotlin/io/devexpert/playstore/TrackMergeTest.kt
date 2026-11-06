@@ -5,11 +5,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class TrackMergeTest {
-    private fun release(status: String, vararg codes: Long) =
-        TrackRelease().apply {
-            this.status = status
-            versionCodes = codes.toList()
-        }
+    private fun release(status: String, vararg codes: Long) = TrackRelease().apply {
+        this.status = status
+        versionCodes = codes.toList()
+    }
 
     private fun merged(existing: List<TrackRelease>, new: TrackRelease) =
         TrackMerge.releasesAfter(existing, new).map { it.status to it.versionCodes }

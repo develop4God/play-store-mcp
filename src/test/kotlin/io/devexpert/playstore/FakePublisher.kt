@@ -4,7 +4,7 @@ package io.devexpert.playstore
 internal class FakePublisher(
     private val deployResult: PlayStoreDeploymentResult? = null,
     private val releases: List<PlayStoreRelease> = emptyList(),
-    private val failure: Exception? = null
+    private val failure: Exception? = null,
 ) : PlayPublisher {
     val deployCalls = mutableListOf<DeployRequest>()
     val promoteCalls = mutableListOf<PromoteRequest>()

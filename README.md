@@ -35,10 +35,11 @@ Uploads a new version to a track. On `production` it is saved as a draft and nev
 - `track` (string): `internal`, `alpha`, `beta` or `production` (draft, not sent for review)
 - `apkPath` (string): Absolute path to the `.aab` or `.apk` file
 - `releaseNotes` (object, optional): Language tag to text, e.g. `{"en-US": "Fixes", "es-ES": "Correcciones"}`
+- `inAppUpdatePriority` (integer 0-5, optional): Play in-app update priority; 4-5 marks the release urgent (apps may force an immediate update). Can only be set when the release is created. Omitted: not set.
 - `confirm` (boolean, optional): Must be `true` to upload; default `false` (dry run)
 
 ### 2. `promote_release`
-Promotes a completed release: `internal → alpha`, `internal → beta` or `alpha → beta`.
+Promotes a completed release: `internal → alpha`, `internal → beta` or `alpha → beta`. Release notes and in-app update priority are kept; the result states the priority, flagged URGENT for 4-5.
 
 **Parameters:**
 - `packageName` (string): Application id
@@ -58,7 +59,7 @@ Replaces the release notes of an existing release on a testing track.
 - `confirm` (boolean, optional): Must be `true` to update; default `false` (dry run)
 
 ### 4. `get_releases`
-Lists the releases on every track (read-only).
+Lists the releases on every track (read-only), including `inAppUpdatePriority` when Play stored one.
 
 **Parameters:**
 - `packageName` (string): Application id (e.g., com.example.myapp)

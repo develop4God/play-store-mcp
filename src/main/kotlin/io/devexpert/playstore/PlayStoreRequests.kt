@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import java.io.File
 
 /**
@@ -42,18 +43,24 @@ data class DeployRequest(
     val track: String,
     val apkPath: String,
     val releaseNotes: Map<String, String>,
-    val confirm: Boolean
+    val confirm: Boolean,
+    val inAppUpdatePriority: Int? = null,
 ) {
     init {
         validatePackageName(packageName)
         if (track !in TrackPolicy.deployableTracks) {
             throw InvalidRequestException("track must be one of ${TrackPolicy.deployableTracks}, got '$track'")
         }
+        if (inAppUpdatePriority != null && inAppUpdatePriority !in IN_APP_UPDATE_PRIORITIES) {
+            throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
+        }
     }
 
     companion object {
         private val BUNDLE_EXTENSIONS = setOf("aab", "apk")
 
+        // Validator: each throw rejects one distinct invalid input with its own message.
+        @Suppress("ThrowsCount")
         fun parse(args: Map<String, JsonElement>): DeployRequest {
             if ("rolloutPercentage" in args) {
                 throw InvalidRequestException("rolloutPercentage is not supported: testing tracks have no staged rollout")
@@ -70,7 +77,8 @@ data class DeployRequest(
                 track = args.requireString("track"),
                 apkPath = resolved.path,
                 releaseNotes = args.optionalReleaseNotes(),
-                confirm = args.optionalConfirm()
+                confirm = args.optionalConfirm(),
+                inAppUpdatePriority = args.optionalInAppUpdatePriority(),
             )
         }
     }
@@ -81,13 +89,13 @@ data class PromoteRequest(
     val fromTrack: String,
     val toTrack: String,
     val versionCode: Long,
-    val confirm: Boolean
+    val confirm: Boolean,
 ) {
     init {
         validatePackageName(packageName)
         if (fromTrack to toTrack !in TrackPolicy.allowedPromotions) {
             throw InvalidRequestException(
-                "promotion $fromTrack -> $toTrack is not allowed; allowed: ${TrackPolicy.allowedPromotions}"
+                "promotion $fromTrack -> $toTrack is not allowed; allowed: ${TrackPolicy.allowedPromotions}",
             )
         }
         if (versionCode <= 0) throw InvalidRequestException("versionCode must be a positive integer")
@@ -102,7 +110,7 @@ data class PromoteRequest(
                 fromTrack = args.requireString("fromTrack"),
                 toTrack = args.requireString("toTrack"),
                 versionCode = versionCode,
-                confirm = args.optionalConfirm()
+                confirm = args.optionalConfirm(),
             )
         }
     }
@@ -113,7 +121,7 @@ data class UpdateReleaseNotesRequest(
     val track: String,
     val versionCode: Long,
     val releaseNotes: Map<String, String>,
-    val confirm: Boolean
+    val confirm: Boolean,
 ) {
     init {
         validatePackageName(packageName)
@@ -131,13 +139,30 @@ data class UpdateReleaseNotesRequest(
             versionCode = args.requireString("versionCode").toLongOrNull()
                 ?: throw InvalidRequestException("versionCode must be a positive integer"),
             releaseNotes = args.requireReleaseNotes(),
-            confirm = args.optionalConfirm()
+            confirm = args.optionalConfirm(),
         )
     }
 }
 
 /** Google Play rejects a release note longer than this, per language. */
 const val MAX_RELEASE_NOTE_CHARACTERS = 500
+
+private const val MAX_IN_APP_UPDATE_PRIORITY = 5
+
+/** Play treats priorities from this value up as urgent. */
+private const val MIN_URGENT_IN_APP_UPDATE_PRIORITY = 4
+
+/** Play's in-app update priority range. */
+private val IN_APP_UPDATE_PRIORITIES = 0..MAX_IN_APP_UPDATE_PRIORITY
+
+/** Human-readable priority; urgent ones are flagged because apps may block users until they update. */
+internal fun describeInAppUpdatePriority(priority: Int): String = if (priority >= MIN_URGENT_IN_APP_UPDATE_PRIORITY) {
+    "$priority (URGENT: apps may force an immediate update)"
+} else {
+    "$priority"
+}
+
+private const val IN_APP_UPDATE_PRIORITY_ERROR = "inAppUpdatePriority must be an integer from 0 to $MAX_IN_APP_UPDATE_PRIORITY"
 
 private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
@@ -158,11 +183,23 @@ private fun Map<String, JsonElement>.optionalConfirm(): Boolean {
     return primitive.booleanOrNull ?: throw InvalidRequestException("confirm must be a boolean")
 }
 
+private fun Map<String, JsonElement>.optionalInAppUpdatePriority(): Int? {
+    val element = this["inAppUpdatePriority"] ?: return null
+    val primitive = element as? JsonPrimitive
+    if (primitive == null || primitive.isString) throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
+    // intOrNull accepts some integral numbers not written as integers (covered by DeployRequestTest);
+    // requiring the canonical form keeps the input strictly an integer. The range is checked in DeployRequest.init.
+    return primitive.intOrNull?.takeIf { primitive.content == it.toString() }
+        ?: throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
+}
+
 private fun Map<String, JsonElement>.requireReleaseNotes(): Map<String, String> {
     if ("releaseNotes" !in this) throw InvalidRequestException("releaseNotes is required")
     return optionalReleaseNotes()
 }
 
+// Validator: each throw rejects one distinct invalid input with its own message.
+@Suppress("ThrowsCount")
 private fun Map<String, JsonElement>.optionalReleaseNotes(): Map<String, String> {
     val element = this["releaseNotes"] ?: return emptyMap()
     val notes = element as? JsonObject
@@ -175,7 +212,7 @@ private fun Map<String, JsonElement>.optionalReleaseNotes(): Map<String, String>
         if (length > MAX_RELEASE_NOTE_CHARACTERS) {
             throw InvalidRequestException(
                 "release notes for '$language' are $length characters; " +
-                    "Google Play allows at most $MAX_RELEASE_NOTE_CHARACTERS"
+                    "Google Play allows at most $MAX_RELEASE_NOTE_CHARACTERS",
             )
         }
         content
