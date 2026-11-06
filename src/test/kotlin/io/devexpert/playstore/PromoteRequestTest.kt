@@ -13,7 +13,7 @@ class PromoteRequestTest {
             "packageName" to JsonPrimitive("com.example.app"),
             "fromTrack" to JsonPrimitive("internal"),
             "toTrack" to JsonPrimitive("alpha"),
-            "versionCode" to JsonPrimitive(141)
+            "versionCode" to JsonPrimitive(141),
         )
         overrides.forEach { (key, value) ->
             if (value == null) base.remove(key) else base[key] = value

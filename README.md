@@ -39,7 +39,7 @@ Uploads a new version to a track. On `production` it is saved as a draft and nev
 - `confirm` (boolean, optional): Must be `true` to upload; default `false` (dry run)
 
 ### 2. `promote_release`
-Promotes a completed release: `internal → alpha`, `internal → beta` or `alpha → beta`. Release notes and in-app update priority are kept.
+Promotes a completed release: `internal → alpha`, `internal → beta` or `alpha → beta`. Release notes and in-app update priority are kept; the result states the priority, flagged URGENT for 4-5.
 
 **Parameters:**
 - `packageName` (string): Application id

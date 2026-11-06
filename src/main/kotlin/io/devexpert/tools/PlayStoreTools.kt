@@ -25,14 +25,31 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
     private val logger = LoggerFactory.getLogger(PlayStoreTools::class.java)
 
     fun registerTools(server: Server) {
+        registerDeployApp(server)
+        registerPromoteRelease(server)
+        registerUpdateReleaseNotes(server)
+        registerGetReleases(server)
+        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases")
+    }
+
+    private fun registerDeployApp(server: Server) {
         server.addTool(
             name = "deploy_app",
-            description = "Upload an AAB/APK to a testing track (internal, alpha, beta or production). On production the release is only saved as a draft and held back from review. " +
+            description =
+            "Upload an AAB/APK to a testing track (internal, alpha, beta or production). " +
+                "On production the release is only saved as a draft and held back from review. " +
                 "Runs as a dry run unless confirm=true. The version code is read from the file.",
             inputSchema = Tool.Input(
                 properties = buildJsonObject {
                     put("packageName", property("string", "Application id, e.g. com.example.app"))
-                    put("track", property("string", "Track; production is draft-only and never sent for review", enum = TrackPolicy.deployableTracks))
+                    put(
+                        "track",
+                        property(
+                            "string",
+                            "Track; production is draft-only and never sent for review",
+                            enum = TrackPolicy.deployableTracks,
+                        ),
+                    )
                     put("apkPath", property("string", "Absolute path to the .aab or .apk file"))
                     put("releaseNotes", property("object", "Release notes as {\"en-US\": \"text\", \"es-ES\": \"texto\"}"))
                     put(
@@ -40,17 +57,19 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                         property(
                             "integer",
                             "Optional, 0-5. Play in-app update priority; 4-5 marks the release urgent " +
-                                "(apps may force an immediate update). Can only be set when the release is created."
-                        )
+                                "(apps may force an immediate update). Can only be set when the release is created.",
+                        ),
                     )
                     put("confirm", property("boolean", "Must be true to actually upload; default false (dry run)"))
                 },
-                required = listOf("packageName", "track", "apkPath")
-            )
+                required = listOf("packageName", "track", "apkPath"),
+            ),
         ) { request ->
             handle { commands.deploy(DeployRequest.parse(request.arguments)) }
         }
+    }
 
+    private fun registerPromoteRelease(server: Server) {
         server.addTool(
             name = "promote_release",
             description = "Promote a completed release internal -> alpha, internal -> beta or alpha -> beta. " +
@@ -64,12 +83,14 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                     put("versionCode", property("integer", "Version code of the release to promote"))
                     put("confirm", property("boolean", "Must be true to actually promote; default false (dry run)"))
                 },
-                required = listOf("packageName", "fromTrack", "toTrack", "versionCode")
-            )
+                required = listOf("packageName", "fromTrack", "toTrack", "versionCode"),
+            ),
         ) { request ->
             handle { commands.promote(PromoteRequest.parse(request.arguments)) }
         }
+    }
 
+    private fun registerUpdateReleaseNotes(server: Server) {
         server.addTool(
             name = "update_release_notes",
             description = "Replace the release notes of an existing release (production: drafts only, never sent for review). " +
@@ -77,17 +98,26 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
             inputSchema = Tool.Input(
                 properties = buildJsonObject {
                     put("packageName", property("string", "Application id"))
-                    put("track", property("string", "Track; production is draft-only and never sent for review", enum = TrackPolicy.notesEditableTracks))
+                    put(
+                        "track",
+                        property(
+                            "string",
+                            "Track; production is draft-only and never sent for review",
+                            enum = TrackPolicy.notesEditableTracks,
+                        ),
+                    )
                     put("versionCode", property("integer", "Version code of the release to edit"))
                     put("releaseNotes", property("object", "Release notes as {\"en-US\": \"text\", \"es-ES\": \"texto\"}"))
                     put("confirm", property("boolean", "Must be true to actually update; default false (dry run)"))
                 },
-                required = listOf("packageName", "track", "versionCode", "releaseNotes")
-            )
+                required = listOf("packageName", "track", "versionCode", "releaseNotes"),
+            ),
         ) { request ->
             handle { commands.updateReleaseNotes(UpdateReleaseNotesRequest.parse(request.arguments)) }
         }
+    }
 
+    private fun registerGetReleases(server: Server) {
         server.addTool(
             name = "get_releases",
             description = "List the releases on every track of an app (read-only).",
@@ -95,8 +125,8 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                 properties = buildJsonObject {
                     put("packageName", property("string", "Application id, e.g. com.example.app"))
                 },
-                required = listOf("packageName")
-            )
+                required = listOf("packageName"),
+            ),
         ) { request ->
             handle {
                 val packageName = (request.arguments["packageName"] as? JsonPrimitive)?.content
@@ -104,31 +134,28 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                 commands.listReleases(packageName)
             }
         }
-
-        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases")
     }
 
     /** Runs [block] off the main thread and maps validation and API failures to MCP error results. */
-    private suspend fun handle(block: () -> CommandResult): CallToolResult {
-        return try {
-            val result = withContext(Dispatchers.IO) { block() }
-            CallToolResult(content = listOf(TextContent(text = result.message)), isError = !result.success)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: InvalidRequestException) {
-            CallToolResult(content = listOf(TextContent(text = "Invalid request: ${e.message}")), isError = true)
-        } catch (e: Exception) {
-            logger.error("Tool call failed: {}", e.javaClass.simpleName)
-            CallToolResult(content = listOf(TextContent(text = "Error: ${e.message}")), isError = true)
-        }
+    // Error boundary: an unexpected failure must reach the MCP client as an error result, not kill the server.
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun handle(block: () -> CommandResult): CallToolResult = try {
+        val result = withContext(Dispatchers.IO) { block() }
+        CallToolResult(content = listOf(TextContent(text = result.message)), isError = !result.success)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: InvalidRequestException) {
+        CallToolResult(content = listOf(TextContent(text = "Invalid request: ${e.message}")), isError = true)
+    } catch (e: Exception) {
+        logger.error("Tool call failed: {}", e.javaClass.simpleName)
+        CallToolResult(content = listOf(TextContent(text = "Error: ${e.message}")), isError = true)
     }
 
-    private fun property(type: String, description: String, enum: Set<String>? = null): JsonElement =
-        JsonObject(
-            buildMap {
-                put("type", JsonPrimitive(type))
-                put("description", JsonPrimitive(description))
-                enum?.let { values -> put("enum", JsonArray(values.map { JsonPrimitive(it) })) }
-            }
-        )
+    private fun property(type: String, description: String, enum: Set<String>? = null): JsonElement = JsonObject(
+        buildMap {
+            put("type", JsonPrimitive(type))
+            put("description", JsonPrimitive(description))
+            enum?.let { values -> put("enum", JsonArray(values.map { JsonPrimitive(it) })) }
+        },
+    )
 }

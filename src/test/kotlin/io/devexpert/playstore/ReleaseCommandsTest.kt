@@ -20,8 +20,7 @@ class ReleaseCommandsTest {
         return DeployRequest("com.example.app", "internal", file.absolutePath, emptyMap(), confirm)
     }
 
-    private fun promoteRequest(confirm: Boolean) =
-        PromoteRequest("com.example.app", "internal", "alpha", 141, confirm)
+    private fun promoteRequest(confirm: Boolean) = PromoteRequest("com.example.app", "internal", "alpha", 141, confirm)
 
     @Test
     fun `deploy without confirm is a dry run that never calls the publisher`() {
@@ -177,6 +176,39 @@ class ReleaseCommandsTest {
     }
 
     @Test
+    fun `promote dry run says the in-app update priority is kept`() {
+        val result = ReleaseCommands(FakePublisher()).promote(promoteRequest(confirm = false))
+
+        assertContains(result.message, "in-app update priority, if any, are kept")
+    }
+
+    @Test
+    fun `deploy dry run flags priorities 4 and 5 as urgent`() {
+        listOf(4, 5).forEach { priority ->
+            val result = ReleaseCommands(FakePublisher()).deploy(prioritisedDeploy(confirm = false, priority = priority))
+
+            assertContains(result.message, "in-app update priority $priority (URGENT: apps may force an immediate update)")
+        }
+    }
+
+    @Test
+    fun `deploy dry run does not flag priorities 0 to 3 as urgent`() {
+        listOf(0, 3).forEach { priority ->
+            val result = ReleaseCommands(FakePublisher()).deploy(prioritisedDeploy(confirm = false, priority = priority))
+
+            assertContains(result.message, "in-app update priority $priority")
+            assertFalse(result.message.contains("URGENT"), result.message)
+        }
+    }
+
+    @Test
+    fun `deploy result flags an urgent priority`() {
+        val result = ReleaseCommands(FakePublisher()).deploy(prioritisedDeploy(confirm = true, priority = 5))
+
+        assertContains(result.message, "In-app update priority: 5 (URGENT: apps may force an immediate update)")
+    }
+
+    @Test
     fun `deploy dry run does not mention a priority when absent`() {
         val result = ReleaseCommands(FakePublisher()).deploy(prioritisedDeploy(confirm = false, priority = null))
 
@@ -194,10 +226,24 @@ class ReleaseCommandsTest {
     }
 
     @Test
+    fun `a failed deploy result does not report a priority`() {
+        val failure = PlayStoreDeploymentResult(false, null, "com.example.app", "internal", null, "Operation failed: 403")
+
+        val result = ReleaseCommands(FakePublisher(deployResult = failure)).deploy(prioritisedDeploy(confirm = true, priority = 5))
+
+        assertFalse(result.success)
+        assertFalse(result.message.contains("priority"), result.message)
+    }
+
+    @Test
     fun `a production deploy result states the priority before the review notice`() {
         val held = PlayStoreDeploymentResult(
-            true, "edit-1", "com.example.app", "production", 141,
-            "Uploaded and saved as a draft on production It is NOT sent for review: send it for review in the Play Console."
+            true,
+            "edit-1",
+            "com.example.app",
+            "production",
+            141,
+            "Uploaded and saved as a draft on production It is NOT sent for review: send it for review in the Play Console.",
         )
         val file = File.createTempFile("app", ".aab").also { tempFiles += it }
         val request = DeployRequest("com.example.app", "production", file.absolutePath, emptyMap(), true, 4)
@@ -205,7 +251,7 @@ class ReleaseCommandsTest {
         val message = ReleaseCommands(FakePublisher(deployResult = held)).deploy(request).message
 
         assertTrue(message.endsWith("send it for review in the Play Console."), message)
-        assertContains(message, "In-app update priority: 4\n")
+        assertContains(message, "In-app update priority: 4 (URGENT: apps may force an immediate update)\n")
         assertTrue(message.indexOf("In-app update priority") < message.indexOf("NOT sent for review"))
     }
 
@@ -213,7 +259,7 @@ class ReleaseCommandsTest {
     fun `listReleases JSON includes the priority only when set`() {
         val releases = listOf(
             PlayStoreRelease("internal", "completed", listOf(141), null, "r141", inAppUpdatePriority = 4),
-            PlayStoreRelease("internal", "completed", listOf(140), null, "r140")
+            PlayStoreRelease("internal", "completed", listOf(140), null, "r140"),
         )
 
         val message = ReleaseCommands(FakePublisher(releases = releases)).listReleases("com.example.app").message

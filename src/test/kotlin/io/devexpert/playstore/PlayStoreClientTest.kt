@@ -18,15 +18,13 @@ class PlayStoreClientTest {
     @AfterTest
     fun cleanUp() = tempFiles.forEach { it.delete() }
 
-    private fun bundle(extension: String) =
-        File.createTempFile("app", ".$extension").also { tempFiles += it }.absolutePath
+    private fun bundle(extension: String) = File.createTempFile("app", ".$extension").also { tempFiles += it }.absolutePath
 
     private fun release(status: String, vararg codes: Int, notes: String? = null) =
         """{"name": "r${codes.first()}", "status": "$status", "versionCodes": [${codes.joinToString(",") { "\"$it\"" }}]""" +
             (notes?.let { ""","releaseNotes": [{"language": "en-US", "text": "$it"}]""" } ?: "") + "}"
 
-    private fun track(name: String, vararg releases: String) =
-        """{"track": "$name", "releases": [${releases.joinToString(",")}]}"""
+    private fun track(name: String, vararg releases: String) = """{"track": "$name", "releases": [${releases.joinToString(",")}]}"""
 
     private fun deploy(track: String, extension: String = "aab", notes: Map<String, String> = emptyMap()) =
         client.deploy(DeployRequest("com.example.app", track, bundle(extension), notes, true))
@@ -206,10 +204,9 @@ class PlayStoreClientTest {
 
     // updateReleaseNotes
 
-    private fun updateNotes(track: String = "beta", code: Long = 141) =
-        client.updateReleaseNotes(
-            UpdateReleaseNotesRequest("com.example.app", track, code, mapOf("es-ES" to "Nuevo"), true)
-        )
+    private fun updateNotes(track: String = "beta", code: Long = 141) = client.updateReleaseNotes(
+        UpdateReleaseNotesRequest("com.example.app", track, code, mapOf("es-ES" to "Nuevo"), true),
+    )
 
     @Test
     fun `updateReleaseNotes replaces the notes of a matching release`() {
@@ -320,13 +317,27 @@ class PlayStoreClientTest {
     fun `promote keeps the priority of the source release`() {
         api.tracks["internal"] = track(
             "internal",
-            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}"""
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}""",
         )
 
         val result = promote()
 
         assertTrue(result.success)
         assertContains(lastTrackUpdate(), "\"inAppUpdatePriority\":5")
+        assertContains(result.message, "in-app update priority 5 (URGENT: apps may force an immediate update)")
+    }
+
+    @Test
+    fun `promote keeps an explicit priority of 0`() {
+        api.tracks["internal"] = track(
+            "internal",
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 0}""",
+        )
+
+        val result = promote()
+
+        assertTrue(result.success)
+        assertContains(lastTrackUpdate(), "\"inAppUpdatePriority\":0")
     }
 
     @Test
@@ -337,13 +348,14 @@ class PlayStoreClientTest {
 
         assertTrue(result.success)
         assertFalse(lastTrackUpdate().contains("inAppUpdatePriority"))
+        assertFalse(result.message.contains("priority"), result.message)
     }
 
     @Test
     fun `updateReleaseNotes keeps the priority of the edited release`() {
         api.tracks["beta"] = track(
             "beta",
-            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}"""
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}""",
         )
 
         val result = updateNotes()
@@ -357,7 +369,7 @@ class PlayStoreClientTest {
         api.tracks["internal"] = track(
             "internal",
             """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 4}""",
-            release("completed", 140)
+            release("completed", 140),
         )
 
         val releases = client.listReleases("com.example.app")

@@ -1,7 +1,7 @@
 package io.devexpert.playstore
 
-import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.http.FileContent
 import com.google.api.client.http.HttpRequestInitializer
 import com.google.api.client.json.gson.GsonFactory
@@ -39,7 +39,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                         versionCodes = release.versionCodes.orEmpty(),
                         userFraction = release.userFraction,
                         name = release.name,
-                        inAppUpdatePriority = release.inAppUpdatePriority
+                        inAppUpdatePriority = release.inAppUpdatePriority,
                     )
                 }
             }
@@ -56,7 +56,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 name = "Release $versionCode"
                 versionCodes = listOf(versionCode)
                 status = TrackPolicy.releaseStatusFor(request.track)
-                request.inAppUpdatePriority?.let { inAppUpdatePriority = it }
+                inAppUpdatePriority = request.inAppUpdatePriority
                 if (request.releaseNotes.isNotEmpty()) {
                     releaseNotes = request.releaseNotes.map { (language, text) ->
                         LocalizedText().apply {
@@ -83,7 +83,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 ?: throw PlayStoreException("Version ${request.versionCode} not found in ${request.fromTrack}")
             if (sourceRelease.status != "completed") {
                 throw PlayStoreException(
-                    "Only completed releases can be promoted; ${request.versionCode} is ${sourceRelease.status}"
+                    "Only completed releases can be promoted; ${request.versionCode} is ${sourceRelease.status}",
                 )
             }
             val release = TrackRelease().apply {
@@ -94,7 +94,10 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 inAppUpdatePriority = sourceRelease.inAppUpdatePriority
             }
             setTrack(request.packageName, editId, request.toTrack, release)
-            request.versionCode to "Promoted from ${request.fromTrack} to ${request.toTrack}"
+            val priority = sourceRelease.inAppUpdatePriority
+                ?.let { ", in-app update priority ${describeInAppUpdatePriority(it)}" }
+                .orEmpty()
+            request.versionCode to "Promoted from ${request.fromTrack} to ${request.toTrack}$priority"
         }
     }
 
@@ -112,7 +115,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 ?: throw PlayStoreException("Version ${request.versionCode} not found in ${request.track}")
             if (TrackPolicy.holdsForReview(request.track) && target.status != "draft") {
                 throw PlayStoreException(
-                    "Only draft releases can be edited on ${request.track}; ${request.versionCode} is ${target.status}"
+                    "Only draft releases can be edited on ${request.track}; ${request.versionCode} is ${target.status}",
                 )
             }
             target.releaseNotes = request.releaseNotes.map { (language, text) ->
@@ -154,11 +157,9 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
     }
 
     /** Opens an edit, runs [block], commits it, and deletes the edit if anything fails before commit. */
-    private fun runEdit(
-        packageName: String,
-        track: String,
-        block: (editId: String) -> Pair<Long, String>
-    ): PlayStoreDeploymentResult {
+    // Error boundary: any failure must clean up the open edit and become a failed result.
+    @Suppress("TooGenericExceptionCaught")
+    private fun runEdit(packageName: String, track: String, block: (editId: String) -> Pair<Long, String>): PlayStoreDeploymentResult {
         var editId: String? = null
         return try {
             val id = publisher.edits().insert(packageName, null).execute().id
@@ -182,6 +183,8 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
     }
 
     private companion object {
+        // The Google client builders throw many unrelated types; all are wrapped into one PlayStoreException.
+        @Suppress("TooGenericExceptionCaught")
         fun initializePublisher(serviceAccountKeyPath: String): AndroidPublisher {
             val keyFile = File(serviceAccountKeyPath)
             if (!keyFile.isFile) throw PlayStoreException("Service account key file not found")
@@ -200,7 +203,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 AndroidPublisher.Builder(
                     GoogleNetHttpTransport.newTrustedTransport(),
                     GsonFactory.getDefaultInstance(),
-                    requestInitializer
+                    requestInitializer,
                 ).setApplicationName(APPLICATION_NAME).build()
             } catch (e: Exception) {
                 throw PlayStoreException("Failed to initialize API client: ${e.message}", e)

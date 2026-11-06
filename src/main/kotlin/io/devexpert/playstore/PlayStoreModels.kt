@@ -13,7 +13,7 @@ data class PlayStoreRelease(
     val userFraction: Double?,
     val name: String?,
     /** Omitted from the JSON when Play stored none. */
-    val inAppUpdatePriority: Int? = null
+    val inAppUpdatePriority: Int? = null,
 )
 
 /**
@@ -25,5 +25,5 @@ data class PlayStoreDeploymentResult(
     val packageName: String,
     val track: String,
     val versionCode: Long?,
-    val message: String
+    val message: String,
 )

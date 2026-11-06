@@ -7,19 +7,20 @@ import kotlin.system.exitProcess
 
 private val logger = LoggerFactory.getLogger("Main")
 
+// Process entry point: any startup failure must be logged and end the process with a non-zero exit code.
+@Suppress("TooGenericExceptionCaught")
 fun main() {
     logger.info("Starting Play Store MCP Server...")
-    
+
     try {
         val mcpServer = PlayStoreMcpServer()
         mcpServer.initialize()
-        
+
         val server = mcpServer.getServer()
         logger.info("Play Store MCP Server initialized successfully")
-        
+
         val transport = StdioTransport()
         transport.startServer(server)
-        
     } catch (e: Exception) {
         logger.error("Failed to start Play Store MCP Server", e)
         exitProcess(1)

@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.shadow)
     alias(libs.plugins.kover)
+    alias(libs.plugins.ktlint)
+    alias(libs.plugins.detekt)
     application
 }
 
@@ -20,23 +22,23 @@ repositories {
 dependencies {
     // MCP Core
     implementation(libs.mcp.kotlin.sdk)
-    
+
     // Kotlin Coroutines
     implementation(libs.kotlinx.coroutines.core)
-    
+
     // Serialization
     implementation(libs.kotlinx.serialization.json)
-    
+
     // IO
     implementation(libs.kotlinx.io.core)
-    
+
     // Logging
     implementation(libs.slf4j.api)
     implementation(libs.logback.classic)
 
     implementation(libs.google.play.console)
     implementation(libs.google.auth.library)
-    
+
     // Testing
     testImplementation(libs.kotlin.test)
     testImplementation(libs.junit.jupiter)
@@ -55,6 +57,13 @@ kover {
             }
         }
     }
+}
+
+// Quality gates: ktlint (formatting, rules in .editorconfig) and detekt (static analysis)
+// both run on `./gradlew check`; any finding fails the build.
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(files("config/detekt/detekt.yml"))
 }
 
 tasks.shadowJar {

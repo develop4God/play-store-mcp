@@ -37,7 +37,7 @@ class PlayStoreToolsTest {
         withTimeout(TIMEOUT_MS) {
             val server = Server(
                 Implementation("test-server", "0"),
-                ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false)))
+                ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
             )
             PlayStoreTools(ReleaseCommands(publisher)).registerTools(server)
             val client = Client(Implementation("test-client", "0"))
@@ -123,8 +123,11 @@ class PlayStoreToolsTest {
     fun `promotion to production is rejected`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "fromTrack" to "beta", "toTrack" to "production",
-            "versionCode" to 141, "confirm" to true
+            "packageName" to "com.example.app",
+            "fromTrack" to "beta",
+            "toTrack" to "production",
+            "versionCode" to 141,
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("promote_release", args)!! }
@@ -137,8 +140,11 @@ class PlayStoreToolsTest {
     fun `promote_release with confirm calls the publisher`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "fromTrack" to "internal", "toTrack" to "alpha",
-            "versionCode" to 141, "confirm" to true
+            "packageName" to "com.example.app",
+            "fromTrack" to "internal",
+            "toTrack" to "alpha",
+            "versionCode" to 141,
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("promote_release", args)!! }
@@ -151,8 +157,11 @@ class PlayStoreToolsTest {
     fun `update_release_notes with empty notes is rejected`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "track" to "beta", "versionCode" to 141,
-            "releaseNotes" to buildJsonObject { }, "confirm" to true
+            "packageName" to "com.example.app",
+            "track" to "beta",
+            "versionCode" to 141,
+            "releaseNotes" to buildJsonObject { },
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("update_release_notes", args)!! }
@@ -165,8 +174,11 @@ class PlayStoreToolsTest {
     fun `update_release_notes with confirm calls the publisher`() {
         val publisher = FakePublisher()
         val args = mapOf(
-            "packageName" to "com.example.app", "track" to "beta", "versionCode" to 141,
-            "releaseNotes" to buildJsonObject { put("en-US", "Fixes") }, "confirm" to true
+            "packageName" to "com.example.app",
+            "track" to "beta",
+            "versionCode" to 141,
+            "releaseNotes" to buildJsonObject { put("en-US", "Fixes") },
+            "confirm" to true,
         )
 
         val result = withClient(publisher) { it.callTool("update_release_notes", args)!! }

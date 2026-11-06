@@ -1,5 +1,6 @@
 package io.devexpert.playstore
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -16,17 +17,13 @@ import kotlin.test.assertTrue
 class DeployRequestTest {
     private val tempFiles = mutableListOf<File>()
 
-    private fun bundle(suffix: String = ".aab"): File =
-        File.createTempFile("app", suffix).also { tempFiles += it }
+    private fun bundle(suffix: String = ".aab"): File = File.createTempFile("app", suffix).also { tempFiles += it }
 
-    private fun args(
-        file: File = bundle(),
-        vararg overrides: Pair<String, JsonElement?>
-    ): Map<String, JsonElement> {
+    private fun args(file: File = bundle(), vararg overrides: Pair<String, JsonElement?>): Map<String, JsonElement> {
         val base = mutableMapOf<String, JsonElement>(
             "packageName" to JsonPrimitive("com.example.app"),
             "track" to JsonPrimitive("internal"),
-            "apkPath" to JsonPrimitive(file.absolutePath)
+            "apkPath" to JsonPrimitive(file.absolutePath),
         )
         overrides.forEach { (key, value) ->
             if (value == null) base.remove(key) else base[key] = value
@@ -186,6 +183,17 @@ class DeployRequestTest {
         listOf(JsonPrimitive("4"), JsonPrimitive(4.5), JsonPrimitive(true), JsonNull).forEach { value ->
             val e = assertFailsWith<InvalidRequestException>("value $value") {
                 DeployRequest.parse(args(overrides = arrayOf("inAppUpdatePriority" to value)))
+            }
+            assertEquals("inAppUpdatePriority must be an integer from 0 to 5", e.message)
+        }
+    }
+
+    @Test
+    fun `inAppUpdatePriority written as a non-canonical number is rejected`() {
+        // Raw JSON numbers as an MCP client would send them: integral values, but not written as integers.
+        listOf("4.0", "4e0", "-0").forEach { raw ->
+            val e = assertFailsWith<InvalidRequestException>("value $raw") {
+                DeployRequest.parse(args(overrides = arrayOf("inAppUpdatePriority" to Json.parseToJsonElement(raw))))
             }
             assertEquals("inAppUpdatePriority must be an integer from 0 to 5", e.message)
         }

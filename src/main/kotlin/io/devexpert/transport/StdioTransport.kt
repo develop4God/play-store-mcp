@@ -6,26 +6,27 @@ import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
-import kotlinx.io.asSource
 import kotlinx.io.buffered
 import org.slf4j.LoggerFactory
 
 class StdioTransport {
     private val logger = LoggerFactory.getLogger(StdioTransport::class.java)
-    
+
+    // Logs any transport failure with its stack trace, then rethrows it unchanged.
+    @Suppress("TooGenericExceptionCaught")
     fun startServer(server: Server) {
         logger.info("Starting STDIO transport...")
-        
+
         try {
             val inputSource = System.`in`.asInput()
             val outputSink = System.out.asSink().buffered()
-            
+
             val transport = StdioServerTransport(
                 inputStream = inputSource,
-                outputStream = outputSink
+                outputStream = outputSink,
             )
             logger.info("STDIO transport initialized successfully")
-            
+
             runBlocking {
                 logger.info("Connecting server to STDIO transport...")
                 server.connect(transport)
@@ -36,7 +37,6 @@ class StdioTransport {
                 }
                 done.join()
             }
-            
         } catch (e: Exception) {
             logger.error("Failed to start STDIO transport", e)
             throw e

@@ -17,6 +17,8 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
     private val logger = LoggerFactory.getLogger(ReleaseCommands::class.java)
     private val json = Json { prettyPrint = true }
 
+    // Error boundary: any Play API failure becomes a failed CommandResult instead of escaping to the transport.
+    @Suppress("TooGenericExceptionCaught")
     fun listReleases(packageName: String): CommandResult {
         val validated = validatePackageName(packageName)
         return try {
@@ -24,7 +26,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             CommandResult(
                 executed = true,
                 success = true,
-                message = json.encodeToString(ListSerializer(PlayStoreRelease.serializer()), releases)
+                message = json.encodeToString(ListSerializer(PlayStoreRelease.serializer()), releases),
             )
         } catch (e: Exception) {
             logger.error("Listing releases failed: {}", e.message)
@@ -37,19 +39,26 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             val held = heldNote(request.track)
             val sizeMb = File(request.apkPath).length() / BYTES_PER_MB
             return dryRun(
-                "upload ${request.apkPath} (${sizeMb} MB) to the ${request.track} track of " +
+                "upload ${request.apkPath} ($sizeMb MB) to the ${request.track} track of " +
                     "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}" +
-                    "${priorityNote(request)}$held"
+                    "${priorityNote(request)}$held",
             )
         }
-        return toCommandResult(publisher.deploy(request), request.inAppUpdatePriority)
+        val result = publisher.deploy(request)
+        // Report the priority only once Play has accepted the release that carries it.
+        val priority = request.inAppUpdatePriority?.takeIf { result.success }
+        return toCommandResult(
+            priority?.let {
+                result.copy(message = "In-app update priority: ${describeInAppUpdatePriority(it)}\n${result.message}")
+            } ?: result,
+        )
     }
 
     fun promote(request: PromoteRequest): CommandResult {
         if (!request.confirm) {
             return dryRun(
                 "promote version ${request.versionCode} of ${request.packageName} " +
-                    "from ${request.fromTrack} to ${request.toTrack}"
+                    "from ${request.fromTrack} to ${request.toTrack} (its release notes and in-app update priority, if any, are kept)",
             )
         }
         return toCommandResult(publisher.promote(request))
@@ -59,31 +68,30 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         if (!request.confirm) {
             return dryRun(
                 "replace the release notes of version ${request.versionCode} on the ${request.track} track of " +
-                    "${request.packageName} with notes in ${request.releaseNotes.keys}${heldNote(request.track)}"
+                    "${request.packageName} with notes in ${request.releaseNotes.keys}${heldNote(request.track)}",
             )
         }
         return toCommandResult(publisher.updateReleaseNotes(request))
     }
 
     private fun priorityNote(request: DeployRequest) =
-        request.inAppUpdatePriority?.let { ", in-app update priority $it" }.orEmpty()
+        request.inAppUpdatePriority?.let { ", in-app update priority ${describeInAppUpdatePriority(it)}" }.orEmpty()
 
-    private fun heldNote(track: String) =
-        if (TrackPolicy.holdsForReview(track)) {
-            " (production: saved as a draft only, NOT sent for review; a human sends it in the Play Console)"
-        } else {
-            ""
-        }
+    private fun heldNote(track: String) = if (TrackPolicy.holdsForReview(track)) {
+        " (production: saved as a draft only, NOT sent for review; a human sends it in the Play Console)"
+    } else {
+        ""
+    }
 
     private fun dryRun(plan: String) = CommandResult(
         executed = false,
         success = true,
         message = "DRY RUN - nothing was sent to Google Play.\nWould $plan.\n" +
             "Only the input was validated: credentials, permissions, version code and track state are not checked " +
-            "until you run again with confirm=true."
+            "until you run again with confirm=true.",
     )
 
-    private fun toCommandResult(result: PlayStoreDeploymentResult, inAppUpdatePriority: Int? = null) = CommandResult(
+    private fun toCommandResult(result: PlayStoreDeploymentResult) = CommandResult(
         executed = true,
         success = result.success,
         message = buildString {
@@ -92,9 +100,8 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             appendLine("Track: ${result.track}")
             result.versionCode?.let { appendLine("Version code: $it") }
             result.deploymentId?.let { appendLine("Edit id: $it") }
-            inAppUpdatePriority?.let { appendLine("In-app update priority: $it") }
             append(result.message)
-        }
+        },
     )
 
     private companion object {

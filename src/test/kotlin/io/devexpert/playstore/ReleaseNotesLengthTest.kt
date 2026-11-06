@@ -25,7 +25,7 @@ class ReleaseNotesLengthTest {
             "packageName" to JsonPrimitive("com.example.app"),
             "track" to JsonPrimitive("beta"),
             "apkPath" to JsonPrimitive(file.absolutePath),
-            "releaseNotes" to releaseNotes
+            "releaseNotes" to releaseNotes,
         )
         return DeployRequest.parse(args)
     }
@@ -35,7 +35,7 @@ class ReleaseNotesLengthTest {
             "packageName" to JsonPrimitive("com.example.app"),
             "track" to JsonPrimitive("beta"),
             "versionCode" to JsonPrimitive(144),
-            "releaseNotes" to releaseNotes
+            "releaseNotes" to releaseNotes,
         )
         return UpdateReleaseNotesRequest.parse(args)
     }

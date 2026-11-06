@@ -28,22 +28,22 @@ internal class FakePlayApi {
 
     val publisher: AndroidPublisher = AndroidPublisher.Builder(
         object : MockHttpTransport() {
-            override fun buildRequest(method: String, url: String): LowLevelHttpRequest =
-                object : MockLowLevelHttpRequest(url) {
-                    override fun execute(): LowLevelHttpResponse {
-                        val body = if (streamingContent != null && !url.contains("upload_id=")) contentAsString else ""
-                        requests += Recorded(method, url, body)
-                        return respond(method, url)
-                    }
+            override fun buildRequest(method: String, url: String): LowLevelHttpRequest = object : MockLowLevelHttpRequest(url) {
+                override fun execute(): LowLevelHttpResponse {
+                    val body = if (streamingContent != null && !url.contains("upload_id=")) contentAsString else ""
+                    requests += Recorded(method, url, body)
+                    return respond(method, url)
                 }
+            }
         },
         GsonFactory.getDefaultInstance(),
-        null
+        null,
     ).setApplicationName("test").build()
 
-    fun requestsTo(method: String, urlPart: String) =
-        requests.filter { it.method == method && it.url.contains(urlPart) }
+    fun requestsTo(method: String, urlPart: String) = requests.filter { it.method == method && it.url.contains(urlPart) }
 
+    // A flat routing table of fake Play endpoints; splitting it would hide the routes, not simplify them.
+    @Suppress("CyclomaticComplexMethod")
     private fun respond(method: String, url: String): MockLowLevelHttpResponse {
         fail(method, url)?.let { return error(it) }
         val path = URI(url).path
@@ -63,8 +63,7 @@ internal class FakePlayApi {
         }
     }
 
-    private fun json(body: String) =
-        MockLowLevelHttpResponse().setStatusCode(200).setContentType("application/json").setContent(body)
+    private fun json(body: String) = MockLowLevelHttpResponse().setStatusCode(200).setContentType("application/json").setContent(body)
 
     private fun error(status: Int) = MockLowLevelHttpResponse().setStatusCode(status)
         .setContentType("application/json")

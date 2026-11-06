@@ -25,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew test koverVerify koverHtmlReport --continue
+      - run: ./gradlew check koverVerify koverHtmlReport --continue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -33,4 +33,6 @@ jobs:
           path: |
             build/reports/kover/html
             build/reports/tests
+            build/reports/detekt
+            build/reports/ktlint
           if-no-files-found: ignore
