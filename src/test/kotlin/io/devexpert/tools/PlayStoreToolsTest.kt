@@ -13,6 +13,8 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.io.File
 import kotlin.test.AfterTest
@@ -58,6 +60,27 @@ class PlayStoreToolsTest {
         val names = withClient(FakePublisher()) { client -> client.listTools()!!.tools.map { it.name } }
 
         assertEquals(setOf("deploy_app", "promote_release", "update_release_notes", "get_releases"), names.toSet())
+    }
+
+    @Test
+    fun `deploy_app schema documents inAppUpdatePriority as an optional integer`() {
+        val schema = withClient(FakePublisher()) { client ->
+            client.listTools()!!.tools.single { it.name == "deploy_app" }.inputSchema
+        }
+
+        val property = schema.properties["inAppUpdatePriority"]!!.jsonObject
+        assertEquals("integer", property["type"]!!.jsonPrimitive.content)
+        assertContains(property["description"]!!.jsonPrimitive.content, "urgent")
+        assertFalse("inAppUpdatePriority" in schema.required.orEmpty())
+    }
+
+    @Test
+    fun `promote_release description says the priority is kept`() {
+        val description = withClient(FakePublisher()) { client ->
+            client.listTools()!!.tools.single { it.name == "promote_release" }.description
+        }
+
+        assertContains(description.orEmpty(), "in-app update priority")
     }
 
     @Test

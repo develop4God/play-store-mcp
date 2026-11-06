@@ -299,4 +299,69 @@ class PlayStoreClientTest {
 
         assertContains(e.message.orEmpty(), "Failed to initialize API client")
     }
+
+    // inAppUpdatePriority
+
+    @Test
+    fun `deploy with a priority sends it on the new release`() {
+        client.deploy(DeployRequest("com.example.app", "internal", bundle("aab"), emptyMap(), true, inAppUpdatePriority = 4))
+
+        assertContains(lastTrackUpdate(), "\"inAppUpdatePriority\":4")
+    }
+
+    @Test
+    fun `deploy without a priority does not send the field`() {
+        deploy("internal")
+
+        assertFalse(lastTrackUpdate().contains("inAppUpdatePriority"))
+    }
+
+    @Test
+    fun `promote keeps the priority of the source release`() {
+        api.tracks["internal"] = track(
+            "internal",
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}"""
+        )
+
+        val result = promote()
+
+        assertTrue(result.success)
+        assertContains(lastTrackUpdate(), "\"inAppUpdatePriority\":5")
+    }
+
+    @Test
+    fun `promote of a release without a priority does not send the field`() {
+        api.tracks["internal"] = track("internal", release("completed", 141))
+
+        val result = promote()
+
+        assertTrue(result.success)
+        assertFalse(lastTrackUpdate().contains("inAppUpdatePriority"))
+    }
+
+    @Test
+    fun `updateReleaseNotes keeps the priority of the edited release`() {
+        api.tracks["beta"] = track(
+            "beta",
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 5}"""
+        )
+
+        val result = updateNotes()
+
+        assertTrue(result.success)
+        assertContains(lastTrackUpdate(), "\"inAppUpdatePriority\":5")
+    }
+
+    @Test
+    fun `listReleases reports the priority only when Play stored one`() {
+        api.tracks["internal"] = track(
+            "internal",
+            """{"name": "r141", "status": "completed", "versionCodes": ["141"], "inAppUpdatePriority": 4}""",
+            release("completed", 140)
+        )
+
+        val releases = client.listReleases("com.example.app")
+
+        assertEquals(listOf(4, null), releases.map { it.inAppUpdatePriority })
+    }
 }

@@ -35,6 +35,14 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                     put("track", property("string", "Track; production is draft-only and never sent for review", enum = TrackPolicy.deployableTracks))
                     put("apkPath", property("string", "Absolute path to the .aab or .apk file"))
                     put("releaseNotes", property("object", "Release notes as {\"en-US\": \"text\", \"es-ES\": \"texto\"}"))
+                    put(
+                        "inAppUpdatePriority",
+                        property(
+                            "integer",
+                            "Optional, 0-5. Play in-app update priority; 4-5 marks the release urgent " +
+                                "(apps may force an immediate update). Can only be set when the release is created."
+                        )
+                    )
                     put("confirm", property("boolean", "Must be true to actually upload; default false (dry run)"))
                 },
                 required = listOf("packageName", "track", "apkPath")
@@ -46,6 +54,7 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
         server.addTool(
             name = "promote_release",
             description = "Promote a completed release internal -> alpha, internal -> beta or alpha -> beta. " +
+                "Its release notes and in-app update priority are kept. " +
                 "Runs as a dry run unless confirm=true.",
             inputSchema = Tool.Input(
                 properties = buildJsonObject {

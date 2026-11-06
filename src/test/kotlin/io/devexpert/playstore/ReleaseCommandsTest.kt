@@ -159,4 +159,66 @@ class ReleaseCommandsTest {
         assertContains(result.message, "draft")
         assertContains(result.message, "NOT sent for review")
     }
+
+    // inAppUpdatePriority
+
+    private fun prioritisedDeploy(confirm: Boolean, priority: Int?): DeployRequest =
+        deployRequest(confirm).copy(inAppUpdatePriority = priority)
+
+    @Test
+    fun `deploy dry run mentions the priority when given and never calls the publisher`() {
+        val publisher = FakePublisher()
+
+        val result = ReleaseCommands(publisher).deploy(prioritisedDeploy(confirm = false, priority = 4))
+
+        assertContains(result.message, "in-app update priority 4")
+        assertFalse(result.executed)
+        assertTrue(publisher.deployCalls.isEmpty())
+    }
+
+    @Test
+    fun `deploy dry run does not mention a priority when absent`() {
+        val result = ReleaseCommands(FakePublisher()).deploy(prioritisedDeploy(confirm = false, priority = null))
+
+        assertFalse(result.message.contains("priority"))
+    }
+
+    @Test
+    fun `deploy result mentions the priority when given`() {
+        val publisher = FakePublisher()
+
+        val result = ReleaseCommands(publisher).deploy(prioritisedDeploy(confirm = true, priority = 5))
+
+        assertEquals(5, publisher.deployCalls.single().inAppUpdatePriority)
+        assertContains(result.message, "In-app update priority: 5")
+    }
+
+    @Test
+    fun `a production deploy result states the priority before the review notice`() {
+        val held = PlayStoreDeploymentResult(
+            true, "edit-1", "com.example.app", "production", 141,
+            "Uploaded and saved as a draft on production It is NOT sent for review: send it for review in the Play Console."
+        )
+        val file = File.createTempFile("app", ".aab").also { tempFiles += it }
+        val request = DeployRequest("com.example.app", "production", file.absolutePath, emptyMap(), true, 4)
+
+        val message = ReleaseCommands(FakePublisher(deployResult = held)).deploy(request).message
+
+        assertTrue(message.endsWith("send it for review in the Play Console."), message)
+        assertContains(message, "In-app update priority: 4\n")
+        assertTrue(message.indexOf("In-app update priority") < message.indexOf("NOT sent for review"))
+    }
+
+    @Test
+    fun `listReleases JSON includes the priority only when set`() {
+        val releases = listOf(
+            PlayStoreRelease("internal", "completed", listOf(141), null, "r141", inAppUpdatePriority = 4),
+            PlayStoreRelease("internal", "completed", listOf(140), null, "r140")
+        )
+
+        val message = ReleaseCommands(FakePublisher(releases = releases)).listReleases("com.example.app").message
+
+        assertEquals(1, Regex("inAppUpdatePriority").findAll(message).count())
+        assertContains(message, "\"inAppUpdatePriority\": 4")
+    }
 }

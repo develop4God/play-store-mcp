@@ -11,7 +11,9 @@ data class PlayStoreRelease(
     val status: String, // completed, inProgress, draft, halted
     val versionCodes: List<Long>,
     val userFraction: Double?,
-    val name: String?
+    val name: String?,
+    /** Omitted from the JSON when Play stored none. */
+    val inAppUpdatePriority: Int? = null
 )
 
 /**

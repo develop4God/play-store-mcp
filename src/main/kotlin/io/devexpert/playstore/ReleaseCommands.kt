@@ -38,10 +38,11 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             val sizeMb = File(request.apkPath).length() / BYTES_PER_MB
             return dryRun(
                 "upload ${request.apkPath} (${sizeMb} MB) to the ${request.track} track of " +
-                    "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}$held"
+                    "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}" +
+                    "${priorityNote(request)}$held"
             )
         }
-        return toCommandResult(publisher.deploy(request))
+        return toCommandResult(publisher.deploy(request), request.inAppUpdatePriority)
     }
 
     fun promote(request: PromoteRequest): CommandResult {
@@ -64,6 +65,9 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         return toCommandResult(publisher.updateReleaseNotes(request))
     }
 
+    private fun priorityNote(request: DeployRequest) =
+        request.inAppUpdatePriority?.let { ", in-app update priority $it" }.orEmpty()
+
     private fun heldNote(track: String) =
         if (TrackPolicy.holdsForReview(track)) {
             " (production: saved as a draft only, NOT sent for review; a human sends it in the Play Console)"
@@ -79,7 +83,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             "until you run again with confirm=true."
     )
 
-    private fun toCommandResult(result: PlayStoreDeploymentResult) = CommandResult(
+    private fun toCommandResult(result: PlayStoreDeploymentResult, inAppUpdatePriority: Int? = null) = CommandResult(
         executed = true,
         success = result.success,
         message = buildString {
@@ -88,6 +92,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
             appendLine("Track: ${result.track}")
             result.versionCode?.let { appendLine("Version code: $it") }
             result.deploymentId?.let { appendLine("Edit id: $it") }
+            inAppUpdatePriority?.let { appendLine("In-app update priority: $it") }
             append(result.message)
         }
     )

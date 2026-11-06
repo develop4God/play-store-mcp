@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DeployRequestTest {
@@ -152,6 +153,48 @@ class DeployRequestTest {
         }
         assertFailsWith<InvalidRequestException> {
             DeployRequest.parse(args(overrides = arrayOf("releaseNotes" to JsonPrimitive("plain string"))))
+        }
+    }
+
+    // inAppUpdatePriority
+
+    @Test
+    fun `absent inAppUpdatePriority is null`() {
+        assertNull(DeployRequest.parse(args()).inAppUpdatePriority)
+    }
+
+    @Test
+    fun `inAppUpdatePriority accepts the bounds 0 and 5`() {
+        listOf(0, 5).forEach { priority ->
+            val request = DeployRequest.parse(args(overrides = arrayOf("inAppUpdatePriority" to JsonPrimitive(priority))))
+            assertEquals(priority, request.inAppUpdatePriority)
+        }
+    }
+
+    @Test
+    fun `inAppUpdatePriority out of range is rejected`() {
+        listOf(-1, 6).forEach { priority ->
+            val e = assertFailsWith<InvalidRequestException>("priority $priority") {
+                DeployRequest.parse(args(overrides = arrayOf("inAppUpdatePriority" to JsonPrimitive(priority))))
+            }
+            assertEquals("inAppUpdatePriority must be an integer from 0 to 5", e.message)
+        }
+    }
+
+    @Test
+    fun `inAppUpdatePriority of the wrong type is rejected`() {
+        listOf(JsonPrimitive("4"), JsonPrimitive(4.5), JsonPrimitive(true), JsonNull).forEach { value ->
+            val e = assertFailsWith<InvalidRequestException>("value $value") {
+                DeployRequest.parse(args(overrides = arrayOf("inAppUpdatePriority" to value)))
+            }
+            assertEquals("inAppUpdatePriority must be an integer from 0 to 5", e.message)
+        }
+    }
+
+    @Test
+    fun `direct construction with an out of range priority is rejected`() {
+        assertFailsWith<InvalidRequestException> {
+            DeployRequest("com.example.app", "internal", bundle().absolutePath, emptyMap(), false, inAppUpdatePriority = 6)
         }
     }
 }

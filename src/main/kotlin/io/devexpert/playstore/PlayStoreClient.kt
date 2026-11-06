@@ -38,7 +38,8 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                         status = release.status ?: "unknown",
                         versionCodes = release.versionCodes.orEmpty(),
                         userFraction = release.userFraction,
-                        name = release.name
+                        name = release.name,
+                        inAppUpdatePriority = release.inAppUpdatePriority
                     )
                 }
             }
@@ -55,6 +56,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 name = "Release $versionCode"
                 versionCodes = listOf(versionCode)
                 status = TrackPolicy.releaseStatusFor(request.track)
+                request.inAppUpdatePriority?.let { inAppUpdatePriority = it }
                 if (request.releaseNotes.isNotEmpty()) {
                     releaseNotes = request.releaseNotes.map { (language, text) ->
                         LocalizedText().apply {
@@ -89,6 +91,7 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
                 versionCodes = sourceRelease.versionCodes
                 status = "completed"
                 releaseNotes = sourceRelease.releaseNotes
+                inAppUpdatePriority = sourceRelease.inAppUpdatePriority
             }
             setTrack(request.packageName, editId, request.toTrack, release)
             request.versionCode to "Promoted from ${request.fromTrack} to ${request.toTrack}"

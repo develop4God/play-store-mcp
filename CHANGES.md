@@ -22,3 +22,4 @@ Base: devexpert-io/play-store-mcp @ b36fad39b4b636fb1948dc86372e03458661b3d6 (MI
 18. Coroutine cancellation is no longer swallowed; cleanup failures no longer mask the real result.
 19. New `update_release_notes` tool (dry run by default) replaces the notes of an existing release on a testing track.
 20. A release note longer than 500 characters (Google Play's per-language limit, counted in Unicode code points) is rejected up front, in the dry run too, instead of only failing at the real upload.
+21. `deploy_app` accepts an optional `inAppUpdatePriority` (integer 0-5, strictly typed); `promote_release` copies the source release's priority, which Play only accepts when a release is created. `get_releases` shows `inAppUpdatePriority` when Play stored one.

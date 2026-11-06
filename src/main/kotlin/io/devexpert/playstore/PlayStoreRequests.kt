@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import java.io.File
 
 /**
@@ -42,12 +43,16 @@ data class DeployRequest(
     val track: String,
     val apkPath: String,
     val releaseNotes: Map<String, String>,
-    val confirm: Boolean
+    val confirm: Boolean,
+    val inAppUpdatePriority: Int? = null
 ) {
     init {
         validatePackageName(packageName)
         if (track !in TrackPolicy.deployableTracks) {
             throw InvalidRequestException("track must be one of ${TrackPolicy.deployableTracks}, got '$track'")
+        }
+        if (inAppUpdatePriority != null && inAppUpdatePriority !in IN_APP_UPDATE_PRIORITIES) {
+            throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
         }
     }
 
@@ -70,7 +75,8 @@ data class DeployRequest(
                 track = args.requireString("track"),
                 apkPath = resolved.path,
                 releaseNotes = args.optionalReleaseNotes(),
-                confirm = args.optionalConfirm()
+                confirm = args.optionalConfirm(),
+                inAppUpdatePriority = args.optionalInAppUpdatePriority()
             )
         }
     }
@@ -139,6 +145,11 @@ data class UpdateReleaseNotesRequest(
 /** Google Play rejects a release note longer than this, per language. */
 const val MAX_RELEASE_NOTE_CHARACTERS = 500
 
+/** Play's in-app update priority range; 4 and 5 mark a release urgent. */
+val IN_APP_UPDATE_PRIORITIES = 0..5
+
+private const val IN_APP_UPDATE_PRIORITY_ERROR = "inAppUpdatePriority must be an integer from 0 to 5"
+
 private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 fun validatePackageName(name: String): String {
@@ -156,6 +167,14 @@ private fun Map<String, JsonElement>.optionalConfirm(): Boolean {
     val primitive = this["confirm"] as? JsonPrimitive ?: return false
     if (primitive.isString) throw InvalidRequestException("confirm must be a boolean")
     return primitive.booleanOrNull ?: throw InvalidRequestException("confirm must be a boolean")
+}
+
+private fun Map<String, JsonElement>.optionalInAppUpdatePriority(): Int? {
+    val element = this["inAppUpdatePriority"] ?: return null
+    val primitive = element as? JsonPrimitive
+    if (primitive == null || primitive.isString) throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
+    val priority = primitive.intOrNull?.takeIf { primitive.content == it.toString() }
+    return priority?.takeIf { it in IN_APP_UPDATE_PRIORITIES } ?: throw InvalidRequestException(IN_APP_UPDATE_PRIORITY_ERROR)
 }
 
 private fun Map<String, JsonElement>.requireReleaseNotes(): Map<String, String> {
