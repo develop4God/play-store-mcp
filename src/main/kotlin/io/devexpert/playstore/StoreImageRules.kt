@@ -20,7 +20,6 @@ object StoreImageRules {
     private const val FEATURE_HEIGHT = 500
     private const val MIN_SCREENSHOT_SIDE = 320
     private const val MAX_SCREENSHOT_SIDE = 3840
-    private const val MAX_ASPECT_RATIO = 2
 
     private data class Spec(val maxBytes: Long, val exactSize: Pair<Int, Int>?, val formats: Set<String>, val alphaAllowed: Boolean)
 
@@ -92,11 +91,6 @@ object StoreImageRules {
         if (sides.any { it !in MIN_SCREENSHOT_SIDE..MAX_SCREENSHOT_SIDE }) {
             throw InvalidRequestException(
                 "$name: $imageType sides must be $MIN_SCREENSHOT_SIDE-$MAX_SCREENSHOT_SIDE px; the image is ${width}x$height"
-            )
-        }
-        if (sides.max() > MAX_ASPECT_RATIO * sides.min()) {
-            throw InvalidRequestException(
-                "$name: $imageType longest side must be at most $MAX_ASPECT_RATIO x the shortest; the image is ${width}x$height"
             )
         }
     }

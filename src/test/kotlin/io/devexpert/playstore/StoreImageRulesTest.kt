@@ -62,8 +62,13 @@ class StoreImageRulesTest {
     fun `rejects screenshots outside Play's size rules`() {
         assertContains(rejection(images.png("a.png", 319, 640), "phoneScreenshots"), "320-3840")
         assertContains(rejection(images.png("b.png", 3841, 2000), "phoneScreenshots"), "320-3840")
-        assertContains(rejection(images.png("c.png", 400, 1000), "phoneScreenshots"), "at most 2 x")
         assertContains(rejection(images.png("d.png", 1080, 1920, alpha = true), "phoneScreenshots"), "alpha")
+    }
+
+    @Test
+    fun `accepts tall modern phone screenshots that Play shows today`() {
+        StoreImageRules.validate(images.jpeg("tall.jpg", 1080, 2400), "phoneScreenshots")
+        StoreImageRules.validate(images.png("wide.png", 2400, 1080), "tenInchScreenshots")
     }
 
     @Test

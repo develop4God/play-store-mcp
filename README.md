@@ -85,7 +85,7 @@ Replaces **all** images of the given types in the given languages, in **one** ed
 - `sendForReview` (boolean, optional): default `false` (held back from review). `true` sends the change to Google review; needed for apps Google reviews automatically.
 - `confirm` (boolean, optional): must be `true` to write; default `false` (dry run)
 
-Files are checked locally before anything is sent: real format, size in KB, and pixel size (icon 512x512 PNG up to 1 MB; feature graphic 1024x500 up to 15 MB; screenshots 320-3840 px per side, longest side at most twice the shortest, up to 8 MB, no transparency).
+Files are checked locally before anything is sent: real format, size in KB, and pixel size (icon 512x512 PNG up to 1 MB; feature graphic 1024x500 up to 15 MB; screenshots 320-3840 px per side, up to 8 MB, no transparency).
 
 ## Setup
 
