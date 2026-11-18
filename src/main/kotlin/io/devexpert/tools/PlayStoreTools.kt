@@ -1,5 +1,6 @@
 package io.devexpert.tools
 
+import io.devexpert.playstore.CatalogQueries
 import io.devexpert.playstore.CommandResult
 import io.devexpert.playstore.DeployRequest
 import io.devexpert.playstore.InvalidRequestException
@@ -21,7 +22,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.slf4j.LoggerFactory
 
-class PlayStoreTools(private val commands: ReleaseCommands) {
+class PlayStoreTools(private val commands: ReleaseCommands, private val catalog: CatalogQueries) {
     private val logger = LoggerFactory.getLogger(PlayStoreTools::class.java)
 
     fun registerTools(server: Server) {
@@ -29,7 +30,11 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
         registerPromoteRelease(server)
         registerUpdateReleaseNotes(server)
         registerGetReleases(server)
-        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases")
+        registerCatalogTools(server)
+        logger.info(
+            "Registered tools: deploy_app, promote_release, update_release_notes, get_releases, " +
+                "get_app_details, get_store_listings, list_inapp_products, list_subscriptions",
+        )
     }
 
     private fun registerDeployApp(server: Server) {
@@ -132,6 +137,53 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
                 val packageName = (request.arguments["packageName"] as? JsonPrimitive)?.content
                     ?: throw InvalidRequestException("packageName is required")
                 commands.listReleases(packageName)
+            }
+        }
+    }
+
+    private fun registerCatalogTools(server: Server) {
+        registerPackageQuery(
+            server,
+            "get_app_details",
+            "Get the app's default language and contact details (read-only).",
+            catalog::appDetails,
+        )
+        registerPackageQuery(
+            server,
+            "get_store_listings",
+            "List the store listing of every language: title, short and full description (read-only).",
+            catalog::storeListings,
+        )
+        registerPackageQuery(
+            server,
+            "list_inapp_products",
+            "List the in-app products: sku, status, type, default price and localized titles (read-only).",
+            catalog::inAppProducts,
+        )
+        registerPackageQuery(
+            server,
+            "list_subscriptions",
+            "List the subscriptions with their base plans and localized listings (read-only).",
+            catalog::subscriptions,
+        )
+    }
+
+    /** A read-only tool whose only argument is the package name. */
+    private fun registerPackageQuery(server: Server, name: String, description: String, query: (String) -> CommandResult) {
+        server.addTool(
+            name = name,
+            description = description,
+            inputSchema = Tool.Input(
+                properties = buildJsonObject {
+                    put("packageName", property("string", "Application id, e.g. com.example.app"))
+                },
+                required = listOf("packageName"),
+            ),
+        ) { request ->
+            handle {
+                val packageName = (request.arguments["packageName"] as? JsonPrimitive)?.content
+                    ?: throw InvalidRequestException("packageName is required")
+                query(packageName)
             }
         }
     }

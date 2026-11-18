@@ -20,31 +20,25 @@ import java.io.FileInputStream
  * Talks to the Google Play Android Publisher API. The only network peer is Google.
  */
 class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPublisher) : PlayPublisher {
-    constructor(serviceAccountKeyPath: String) : this({ initializePublisher(serviceAccountKeyPath) })
+    constructor(serviceAccountKeyPath: String) : this({ createPublisher(serviceAccountKeyPath) })
 
     private val logger = LoggerFactory.getLogger(PlayStoreClient::class.java)
 
     private val publisher: AndroidPublisher by lazy(publisherSupplier)
 
-    override fun listReleases(packageName: String): List<PlayStoreRelease> {
-        val edits = publisher.edits()
-        val editId = edits.insert(packageName, null).execute().id
-        try {
-            val tracks = edits.tracks().list(packageName, editId).execute().tracks.orEmpty()
-            return tracks.flatMap { track ->
-                track.releases.orEmpty().map { release ->
-                    PlayStoreRelease(
-                        track = track.track ?: "unknown",
-                        status = release.status ?: "unknown",
-                        versionCodes = release.versionCodes.orEmpty(),
-                        userFraction = release.userFraction,
-                        name = release.name,
-                        inAppUpdatePriority = release.inAppUpdatePriority,
-                    )
-                }
+    override fun listReleases(packageName: String): List<PlayStoreRelease> = publisher.readEdit(packageName) { editId ->
+        val tracks = publisher.edits().tracks().list(packageName, editId).execute().tracks.orEmpty()
+        tracks.flatMap { track ->
+            track.releases.orEmpty().map { release ->
+                PlayStoreRelease(
+                    track = track.track ?: "unknown",
+                    status = release.status ?: "unknown",
+                    versionCodes = release.versionCodes.orEmpty(),
+                    userFraction = release.userFraction,
+                    name = release.name,
+                    inAppUpdatePriority = release.inAppUpdatePriority,
+                )
             }
-        } finally {
-            runCatching { edits.delete(packageName, editId).execute() }
         }
     }
 
@@ -182,10 +176,10 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
         }
     }
 
-    private companion object {
+    internal companion object {
         // The Google client builders throw many unrelated types; all are wrapped into one PlayStoreException.
         @Suppress("TooGenericExceptionCaught")
-        fun initializePublisher(serviceAccountKeyPath: String): AndroidPublisher {
+        fun createPublisher(serviceAccountKeyPath: String): AndroidPublisher {
             val keyFile = File(serviceAccountKeyPath)
             if (!keyFile.isFile) throw PlayStoreException("Service account key file not found")
 
@@ -210,12 +204,12 @@ class PlayStoreClient internal constructor(publisherSupplier: () -> AndroidPubli
             }
         }
 
-        const val APPLICATION_NAME = "Play Store MCP Server"
-        const val HTTP_NOT_FOUND = 404
-        const val CONNECT_TIMEOUT_MS = 60_000
-        const val UPLOAD_READ_TIMEOUT_MS = 600_000
-        const val MIME_BINARY = "application/octet-stream"
-        const val MIME_APK = "application/vnd.android.package-archive"
+        private const val APPLICATION_NAME = "Play Store MCP Server"
+        private const val HTTP_NOT_FOUND = 404
+        private const val CONNECT_TIMEOUT_MS = 60_000
+        private const val UPLOAD_READ_TIMEOUT_MS = 600_000
+        private const val MIME_BINARY = "application/octet-stream"
+        private const val MIME_APK = "application/vnd.android.package-archive"
     }
 }
 

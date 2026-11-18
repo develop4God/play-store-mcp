@@ -23,6 +23,13 @@ internal class FakePlayApi {
 
     var uploadedVersionCode = 141
 
+    /** JSON bodies for the catalog endpoints; a null body answers 404. Paged endpoints use [pages] instead. */
+    var details: String? = null
+    var listings: String? = null
+
+    /** Page bodies per endpoint suffix (`inappproducts`, `subscriptions`), served in order by the `token`/`pageToken` query. */
+    val pages = mutableMapOf<String, List<String>>()
+
     /** Returns an HTTP status to force for a request, or null to let it succeed. */
     var fail: (method: String, url: String) -> Int? = { _, _ -> null }
 
@@ -51,6 +58,10 @@ internal class FakePlayApi {
             url.contains("upload_id=") -> json("""{"versionCode": $uploadedVersionCode}""")
             url.contains("uploadType=resumable") ->
                 MockLowLevelHttpResponse().setStatusCode(200).addHeader("Location", "$url&upload_id=1")
+            method == "GET" && path.endsWith("/details") -> details?.let { json(it) } ?: error(404)
+            method == "GET" && path.endsWith("/listings") -> listings?.let { json(it) } ?: error(404)
+            method == "GET" && (path.endsWith("/inappproducts") || path.endsWith("/subscriptions")) ->
+                page(path.substringAfterLast("/"), url)
             method == "POST" && path.endsWith("/edits") -> json("""{"id": "edit-1"}""")
             method == "POST" && path.endsWith(":commit") -> json("""{"id": "edit-1"}""")
             method == "DELETE" -> MockLowLevelHttpResponse().setStatusCode(204)
@@ -61,6 +72,12 @@ internal class FakePlayApi {
             method == "PUT" && path.contains("/tracks/") -> json("""{}""")
             else -> error(500)
         }
+    }
+
+    private fun page(endpoint: String, url: String): MockLowLevelHttpResponse {
+        val bodies = pages[endpoint] ?: return error(404)
+        val token = Regex("(?:token|pageToken)=(\\d+)").find(url)?.groupValues?.get(1)?.toInt() ?: 0
+        return json(bodies[token])
     }
 
     private fun json(body: String) = MockLowLevelHttpResponse().setStatusCode(200).setContentType("application/json").setContent(body)

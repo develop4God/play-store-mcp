@@ -1,5 +1,7 @@
 package io.devexpert.tools
 
+import io.devexpert.playstore.CatalogQueries
+import io.devexpert.playstore.FakeCatalog
 import io.devexpert.playstore.FakePublisher
 import io.devexpert.playstore.PlayStoreRelease
 import io.devexpert.playstore.ReleaseCommands
@@ -33,33 +35,84 @@ class PlayStoreToolsTest {
 
     private fun bundle() = File.createTempFile("app", ".aab").also { tempFiles += it }.absolutePath
 
-    private fun <T> withClient(publisher: FakePublisher, block: suspend (Client) -> T): T = runBlocking {
-        withTimeout(TIMEOUT_MS) {
-            val server = Server(
-                Implementation("test-server", "0"),
-                ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
-            )
-            PlayStoreTools(ReleaseCommands(publisher)).registerTools(server)
-            val client = Client(Implementation("test-client", "0"))
-            val (clientSide, serverSide) = InMemoryTransport.linkedPair()
-            server.connect(serverSide)
-            client.connect(clientSide)
-            try {
-                block(client)
-            } finally {
-                client.close()
-                server.close()
+    private fun <T> withClient(publisher: FakePublisher, catalog: FakeCatalog = FakeCatalog(), block: suspend (Client) -> T): T =
+        runBlocking {
+            withTimeout(TIMEOUT_MS) {
+                val server = Server(
+                    Implementation("test-server", "0"),
+                    ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
+                )
+                PlayStoreTools(ReleaseCommands(publisher), CatalogQueries(catalog)).registerTools(server)
+                val client = Client(Implementation("test-client", "0"))
+                val (clientSide, serverSide) = InMemoryTransport.linkedPair()
+                server.connect(serverSide)
+                client.connect(clientSide)
+                try {
+                    block(client)
+                } finally {
+                    client.close()
+                    server.close()
+                }
             }
         }
-    }
 
     private fun CallToolResultBase.text() = content.filterIsInstance<TextContent>().joinToString("\n") { it.text.orEmpty() }
 
     @Test
-    fun `registers the four tools`() {
+    fun `registers all eight tools`() {
         val names = withClient(FakePublisher()) { client -> client.listTools()!!.tools.map { it.name } }
 
-        assertEquals(setOf("deploy_app", "promote_release", "update_release_notes", "get_releases"), names.toSet())
+        assertEquals(
+            setOf(
+                "deploy_app",
+                "promote_release",
+                "update_release_notes",
+                "get_releases",
+                "get_app_details",
+                "get_store_listings",
+                "list_inapp_products",
+                "list_subscriptions",
+            ),
+            names.toSet(),
+        )
+    }
+
+    private fun callCatalog(tool: String, arguments: Map<String, Any?>, catalog: FakeCatalog = FakeCatalog()) =
+        withClient(FakePublisher(), catalog) { client -> client.callTool(tool, arguments) as CallToolResultBase }
+
+    @Test
+    fun `each catalog tool returns its data`() {
+        mapOf(
+            "get_app_details" to "dev@example.com",
+            "get_store_listings" to "My App",
+            "list_inapp_products" to "coffee",
+            "list_subscriptions" to "monthly",
+        ).forEach { (tool, expected) ->
+            val result = callCatalog(tool, mapOf("packageName" to "com.example.app"))
+
+            assertNotEquals(true, result.isError, tool)
+            assertContains(result.text(), expected)
+        }
+    }
+
+    @Test
+    fun `catalog tools reject a missing or invalid packageName without calling Play`() {
+        val catalog = FakeCatalog()
+
+        listOf(emptyMap(), mapOf("packageName" to "bad name")).forEach { arguments ->
+            val result = callCatalog("list_inapp_products", arguments, catalog)
+
+            assertEquals(true, result.isError)
+        }
+        assertTrue(catalog.calls.isEmpty())
+    }
+
+    @Test
+    fun `a catalog failure is reported as an error result`() {
+        val result = callCatalog("get_app_details", mapOf("packageName" to "com.example.app"), FakeCatalog(IllegalStateException("boom")))
+
+        assertEquals(true, result.isError)
+        assertContains(result.text(), "boom")
     }
 
     @Test

@@ -22,6 +22,7 @@ This MCP server provides tools to:
 - Promote a completed release `internal → alpha`, `internal → beta` or `alpha → beta`
 - Edit the release notes of an existing release
 - Query the status of existing releases
+- Read the app details, store listings, in-app products and subscriptions (read-only)
 
 Production is held back by design: uploads there are drafts that are not sent for review; the final step stays a human action in the Play Console.
 
@@ -63,6 +64,28 @@ Lists the releases on every track (read-only), including `inAppUpdatePriority` w
 
 **Parameters:**
 - `packageName` (string): Application id (e.g., com.example.myapp)
+
+### 5. `get_app_details`
+Default language and contact details of the app (read-only).
+
+**Parameters:** `packageName` (string)
+
+### 6. `get_store_listings`
+Store listing of every language: title, short and full description (read-only).
+
+**Parameters:** `packageName` (string)
+
+### 7. `list_inapp_products`
+In-app products: sku, status, purchase type, default price (`priceMicros` is millionths of the currency unit) and localized titles (read-only). Apps already migrated to Play's new one-time products model may be rejected by Google for this endpoint.
+
+**Parameters:** `packageName` (string)
+
+### 8. `list_subscriptions`
+Subscriptions with their base plans and localized listings (read-only).
+
+**Parameters:** `packageName` (string)
+
+The four tools above never write: they read through a throwaway edit that is deleted, never committed. The service account needs "View app information"; if a call returns a 403, check its Play Console permissions for that app.
 
 ## Setup
 
