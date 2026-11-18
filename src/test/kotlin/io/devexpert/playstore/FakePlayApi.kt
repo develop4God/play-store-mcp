@@ -14,7 +14,7 @@ import java.net.URI
  * It records every request and answers from [tracks]; [fail] forces an HTTP error for chosen calls.
  */
 internal class FakePlayApi {
-    data class Recorded(val method: String, val url: String, val body: String)
+    data class Recorded(val method: String, val url: String, val body: String, val uploadContentType: String? = null)
 
     val requests = mutableListOf<Recorded>()
 
@@ -22,6 +22,8 @@ internal class FakePlayApi {
     val tracks = mutableMapOf<String, String>()
 
     var uploadedVersionCode = 141
+
+    private var imageCounter = 0
 
     /** JSON bodies of the catalog endpoints; null answers 404. */
     var details: String? = null
@@ -33,13 +35,17 @@ internal class FakePlayApi {
     /** Returns an HTTP status to force for a request, or null to let it succeed. */
     var fail: (method: String, url: String) -> Int? = { _, _ -> null }
 
+    /** Returns true to make a request die with a network error (e.g. a timeout) instead of answering. */
+    var networkFailure: (method: String, url: String) -> Boolean = { _, _ -> false }
+
     val publisher: AndroidPublisher = AndroidPublisher.Builder(
         object : MockHttpTransport() {
             override fun buildRequest(method: String, url: String): LowLevelHttpRequest =
                 object : MockLowLevelHttpRequest(url) {
                     override fun execute(): LowLevelHttpResponse {
                         val body = if (streamingContent != null && !url.contains("upload_id=")) contentAsString else ""
-                        requests += Recorded(method, url, body)
+                        requests += Recorded(method, url, body, getFirstHeaderValue("x-upload-content-type"))
+                        if (networkFailure(method, url)) throw java.io.IOException("simulated timeout")
                         return respond(method, url)
                     }
                 }
@@ -55,6 +61,8 @@ internal class FakePlayApi {
         fail(method, url)?.let { return error(it) }
         val path = URI(url).path
         return when {
+            url.contains("upload_id=") && path.contains("/listings/") ->
+                json("""{"image": {"id": "img-${++imageCounter}", "sha256": "sha"}}""")
             url.contains("upload_id=") -> json("""{"versionCode": $uploadedVersionCode}""")
             url.contains("uploadType=resumable") ->
                 MockLowLevelHttpResponse().setStatusCode(200).addHeader("Location", "$url&upload_id=1")

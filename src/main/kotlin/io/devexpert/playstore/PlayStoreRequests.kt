@@ -146,13 +146,13 @@ fun validatePackageName(name: String): String {
     return name
 }
 
-private fun Map<String, JsonElement>.requireString(key: String): String {
+internal fun Map<String, JsonElement>.requireString(key: String): String {
     val primitive = this[key] as? JsonPrimitive
     if (primitive == null || primitive is JsonNull) throw InvalidRequestException("$key is required")
     return primitive.content.takeIf { it.isNotBlank() } ?: throw InvalidRequestException("$key must not be blank")
 }
 
-private fun Map<String, JsonElement>.optionalConfirm(): Boolean {
+internal fun Map<String, JsonElement>.optionalConfirm(): Boolean {
     val primitive = this["confirm"] as? JsonPrimitive ?: return false
     if (primitive.isString) throw InvalidRequestException("confirm must be a boolean")
     return primitive.booleanOrNull ?: throw InvalidRequestException("confirm must be a boolean")

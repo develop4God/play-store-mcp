@@ -3,9 +3,12 @@ package io.devexpert.tools
 import io.devexpert.playstore.CatalogQueries
 import io.devexpert.playstore.CommandResult
 import io.devexpert.playstore.DeployRequest
+import io.devexpert.playstore.ImageCommands
 import io.devexpert.playstore.InvalidRequestException
 import io.devexpert.playstore.PromoteRequest
 import io.devexpert.playstore.ReleaseCommands
+import io.devexpert.playstore.ReplaceStoreImagesRequest
+import io.devexpert.playstore.StoreImageSlots
 import io.devexpert.playstore.TrackPolicy
 import io.devexpert.playstore.UpdateReleaseNotesRequest
 import io.modelcontextprotocol.kotlin.sdk.CallToolRequest
@@ -23,7 +26,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.slf4j.LoggerFactory
 
-class PlayStoreTools(private val commands: ReleaseCommands, private val catalog: CatalogQueries) {
+class PlayStoreTools(
+    private val commands: ReleaseCommands,
+    private val catalog: CatalogQueries,
+    private val images: ImageCommands
+) {
     private val logger = LoggerFactory.getLogger(PlayStoreTools::class.java)
 
     fun registerTools(server: Server) {
@@ -99,7 +106,10 @@ class PlayStoreTools(private val commands: ReleaseCommands, private val catalog:
         }
 
         registerGetAppDetails(server)
-        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases, get_app_details")
+        registerReplaceStoreImages(server)
+        logger.info(
+            "Registered tools: deploy_app, promote_release, update_release_notes, get_releases, get_app_details, replace_store_images"
+        )
     }
 
     private fun registerGetAppDetails(server: Server) {
@@ -119,6 +129,38 @@ class PlayStoreTools(private val commands: ReleaseCommands, private val catalog:
             handle {
                 catalog.appDetails(request.requireText("packageName"), request.requireText("language"))
             }
+        }
+    }
+
+    private fun registerReplaceStoreImages(server: Server) {
+        server.addTool(
+            name = "replace_store_images",
+            description = "Replace ALL images of one type in one language of the store listing with the given files, in order. " +
+                "The current images of that language and type are deleted first; other languages are untouched. " +
+                "Saved as a draft and never sent for review: a human sends it from the Play Console. " +
+                "All or nothing: if any upload fails, nothing changes. Runs as a dry run unless confirm=true.",
+            inputSchema = Tool.Input(
+                properties = buildJsonObject {
+                    put("packageName", property("string", "Application id, e.g. com.example.app"))
+                    put("language", property("string", "Play language tag of the listing, e.g. en-US or es-419"))
+                    put("imageType", property("string", "Image type to replace", enum = StoreImageSlots.maxPerType.keys))
+                    put(
+                        "imagePaths",
+                        buildJsonObject {
+                            put("type", JsonPrimitive("array"))
+                            put("items", buildJsonObject { put("type", JsonPrimitive("string")) })
+                            put(
+                                "description",
+                                JsonPrimitive("Absolute paths of the new .png/.jpg files, in display order (icon and featureGraphic take exactly one)")
+                            )
+                        }
+                    )
+                    put("confirm", property("boolean", "Must be true to actually replace; default false (dry run)"))
+                },
+                required = listOf("packageName", "language", "imageType", "imagePaths")
+            )
+        ) { request ->
+            handle { images.replaceImages(ReplaceStoreImagesRequest.parse(request.arguments)) }
         }
     }
 

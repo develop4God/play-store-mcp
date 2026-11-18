@@ -36,7 +36,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         if (!request.confirm) {
             val held = heldNote(request.track)
             val sizeMb = File(request.apkPath).length() / BYTES_PER_MB
-            return dryRun(
+            return dryRunResult(
                 "upload ${request.apkPath} (${sizeMb} MB) to the ${request.track} track of " +
                     "${request.packageName}, release notes in ${request.releaseNotes.keys.ifEmpty { setOf("no language") }}$held"
             )
@@ -46,7 +46,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
 
     fun promote(request: PromoteRequest): CommandResult {
         if (!request.confirm) {
-            return dryRun(
+            return dryRunResult(
                 "promote version ${request.versionCode} of ${request.packageName} " +
                     "from ${request.fromTrack} to ${request.toTrack}"
             )
@@ -56,7 +56,7 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
 
     fun updateReleaseNotes(request: UpdateReleaseNotesRequest): CommandResult {
         if (!request.confirm) {
-            return dryRun(
+            return dryRunResult(
                 "replace the release notes of version ${request.versionCode} on the ${request.track} track of " +
                     "${request.packageName} with notes in ${request.releaseNotes.keys}${heldNote(request.track)}"
             )
@@ -70,14 +70,6 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         } else {
             ""
         }
-
-    private fun dryRun(plan: String) = CommandResult(
-        executed = false,
-        success = true,
-        message = "DRY RUN - nothing was sent to Google Play.\nWould $plan.\n" +
-            "Only the input was validated: credentials, permissions, version code and track state are not checked " +
-            "until you run again with confirm=true."
-    )
 
     private fun toCommandResult(result: PlayStoreDeploymentResult) = CommandResult(
         executed = true,
@@ -96,3 +88,12 @@ class ReleaseCommands(private val publisher: PlayPublisher) {
         const val BYTES_PER_MB = 1024L * 1024L
     }
 }
+
+/** The result of a write that was not confirmed: states the plan and what was NOT checked. */
+internal fun dryRunResult(plan: String, unchecked: String = "credentials, permissions, version code and track state") =
+    CommandResult(
+        executed = false,
+        success = true,
+        message = "DRY RUN - nothing was sent to Google Play.\nWould $plan.\n" +
+            "Only the input was validated: $unchecked are not checked until you run again with confirm=true."
+    )

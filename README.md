@@ -8,6 +8,7 @@ An MCP (Model Context Protocol) server that enables interaction with Google Play
 
 ## Safety model
 
+- **Nothing is ever sent to Google review by this server.** Every store listing change (and every `production` release) is committed with `changesNotSentForReview=true`, through one shared commit step with no switch to turn it off. Sending for review is a human action in the Play Console.
 - Writes are limited to `internal`, `alpha`, `beta` and `production`. On `production` the server only saves a **draft** and commits with `changesNotSentForReview=true`: nothing is sent to Google review or reaches users until a human clicks "Send for review" in the Play Console. Only draft releases can be edited there. `promote_release` only does `internal` → `alpha`, `internal` → `beta`, `alpha` → `beta`. The rules are enforced in the request types and client, not only in the tool schema.
 - Every write is a **dry run** unless `confirm=true` is passed. A dry run validates input only and never contacts Google.
 - The version code is read from the uploaded file, not supplied by the caller.
@@ -22,6 +23,8 @@ This MCP server provides tools to:
 - Promote a completed release `internal → alpha`, `internal → beta` or `alpha → beta`
 - Edit the release notes of an existing release
 - Query the status of existing releases
+- Read what the Play Console shows for one language of the store listing (texts, video, images)
+- Replace the store listing images (icon, feature graphic, screenshots) of one language, saved as a draft
 
 Production is held back by design: uploads there are drafts that are not sent for review; the final step stays a human action in the Play Console.
 
@@ -62,6 +65,25 @@ Lists the releases on every track (read-only).
 
 **Parameters:**
 - `packageName` (string): Application id (e.g., com.example.myapp)
+
+### 5. `get_app_details`
+Read-only. Everything the Play Console shows for one language: name, short and full description (each with its length and limit, counted like the Console: an emoji is 2), video, the icon, feature graphic and phone/tablet screenshots (count and limit, with each image's id, URL and sha256), plus the default language and contact details.
+
+**Parameters:**
+- `packageName` (string): Application id
+- `language` (string): Play language tag, e.g. `en-US` or `es-419`. An unknown language fails and lists the available ones.
+
+### 6. `replace_store_images`
+Replaces **all** images of one type in one language with the given files, in order. The current images of that language and type are deleted first; other languages are untouched. Saved as a draft and **never sent for review**: you send it from the Play Console. All or nothing: if any step fails the edit is discarded and the current images stay.
+
+**Parameters:**
+- `packageName` (string): Application id
+- `language` (string): Play language tag
+- `imageType` (string): `icon`, `featureGraphic`, `phoneScreenshots`, `sevenInchScreenshots` or `tenInchScreenshots`
+- `imagePaths` (array of strings): Absolute paths of the new `.png`/`.jpg` files, in display order. `icon` and `featureGraphic` take one; screenshots up to 8.
+- `confirm` (boolean, optional): Must be `true` to replace; default `false` (dry run)
+
+Files are checked locally before anything is sent: real format, size in KB, and pixel size (icon 512x512 PNG up to 1 MB; feature graphic 1024x500 up to 15 MB; screenshots 320-3840 px per side, longest side at most twice the shortest, up to 8 MB, no transparency).
 
 ## Setup
 

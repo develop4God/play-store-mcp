@@ -3,8 +3,6 @@ package io.devexpert.playstore
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
-private val LANGUAGE_TAG = Regex("^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$")
-
 /**
  * Read-only queries over the store catalog. Validates the arguments and renders results as JSON;
  * nothing here can modify anything in Play, so there is no confirm gate.
@@ -17,9 +15,7 @@ class CatalogQueries(private val catalog: PlayCatalog) {
     @Suppress("TooGenericExceptionCaught")
     fun appDetails(packageName: String, language: String): CommandResult {
         val validatedPackage = validatePackageName(packageName)
-        if (!LANGUAGE_TAG.matches(language)) {
-            throw InvalidRequestException("language must be a Play language tag such as en-US, got '$language'")
-        }
+        validateLanguageTag(language)
         return try {
             val view = catalog.getAppDetails(validatedPackage, language)
             CommandResult(executed = true, success = true, message = json.encodeToString(AppDetailsView.serializer(), view))

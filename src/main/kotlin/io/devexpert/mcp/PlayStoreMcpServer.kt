@@ -1,7 +1,9 @@
 package io.devexpert.mcp
 
 import io.devexpert.playstore.CatalogQueries
+import io.devexpert.playstore.ImageCommands
 import io.devexpert.playstore.PlayCatalogClient
+import io.devexpert.playstore.PlayImageClient
 import io.devexpert.playstore.PlayStoreClient
 import io.devexpert.playstore.ReleaseCommands
 import io.devexpert.playstore.ServiceAccountKeyFile
@@ -28,7 +30,8 @@ class PlayStoreMcpServer {
         val publisher = lazy { PlayStoreClient.createPublisher(keyFile) }
         val releases = ReleaseCommands(PlayStoreClient { publisher.value })
         val catalog = CatalogQueries(PlayCatalogClient { publisher.value })
-        PlayStoreTools(releases, catalog).registerTools(server)
+        val images = ImageCommands(PlayImageClient { publisher.value })
+        PlayStoreTools(releases, catalog, images).registerTools(server)
     }
 
     private companion object {
