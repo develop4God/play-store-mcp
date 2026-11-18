@@ -1,5 +1,7 @@
 package io.devexpert.tools
 
+import io.devexpert.playstore.CatalogQueries
+import io.devexpert.playstore.FakeCatalog
 import io.devexpert.playstore.FakePublisher
 import io.devexpert.playstore.PlayStoreRelease
 import io.devexpert.playstore.ReleaseCommands
@@ -31,13 +33,17 @@ class PlayStoreToolsTest {
 
     private fun bundle() = File.createTempFile("app", ".aab").also { tempFiles += it }.absolutePath
 
-    private fun <T> withClient(publisher: FakePublisher, block: suspend (Client) -> T): T = runBlocking {
+    private fun <T> withClient(
+        publisher: FakePublisher,
+        catalog: FakeCatalog = FakeCatalog(),
+        block: suspend (Client) -> T,
+    ): T = runBlocking {
         withTimeout(TIMEOUT_MS) {
             val server = Server(
                 Implementation("test-server", "0"),
                 ServerOptions(ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false)))
             )
-            PlayStoreTools(ReleaseCommands(publisher)).registerTools(server)
+            PlayStoreTools(ReleaseCommands(publisher), CatalogQueries(catalog)).registerTools(server)
             val client = Client(Implementation("test-client", "0"))
             val (clientSide, serverSide) = InMemoryTransport.linkedPair()
             server.connect(serverSide)
@@ -54,10 +60,62 @@ class PlayStoreToolsTest {
     private fun CallToolResultBase.text() = content.filterIsInstance<TextContent>().joinToString("\n") { it.text.orEmpty() }
 
     @Test
-    fun `registers the four tools`() {
+    fun `registers the five tools`() {
         val names = withClient(FakePublisher()) { client -> client.listTools()!!.tools.map { it.name } }
 
-        assertEquals(setOf("deploy_app", "promote_release", "update_release_notes", "get_releases"), names.toSet())
+        assertEquals(setOf("deploy_app", "promote_release", "update_release_notes", "get_releases", "get_app_details"), names.toSet())
+    }
+
+    private fun callDetails(arguments: Map<String, Any?>, catalog: FakeCatalog = FakeCatalog()) =
+        withClient(FakePublisher(), catalog) { client -> client.callTool("get_app_details", arguments) as CallToolResultBase }
+
+    @Test
+    fun `get_app_details requires packageName and language`() {
+        val required = withClient(FakePublisher()) { client ->
+            client.listTools()!!.tools.single { it.name == "get_app_details" }.inputSchema.required
+        }
+
+        assertEquals(listOf("packageName", "language"), required)
+    }
+
+    @Test
+    fun `get_app_details returns the listing of the requested language`() {
+        val result = callDetails(mapOf("packageName" to "com.example.app", "language" to "en-US"))
+
+        assertNotEquals(true, result.isError)
+        assertContains(result.text(), "\"language\": \"en-US\"")
+    }
+
+    @Test
+    fun `get_app_details rejects a missing or invalid argument without calling Play`() {
+        val catalog = FakeCatalog()
+
+        listOf(
+            mapOf("packageName" to "com.example.app"),
+            mapOf("language" to "en-US"),
+            mapOf("packageName" to "bad name", "language" to "en-US"),
+            mapOf("packageName" to "com.example.app", "language" to "not a tag"),
+            mapOf("packageName" to 123, "language" to "en-US"),
+        ).forEach { arguments -> assertEquals(true, callDetails(arguments, catalog).isError, arguments.toString()) }
+        assertTrue(catalog.calls.isEmpty())
+    }
+
+    @Test
+    fun `get_app_details names the wrong type instead of calling the argument missing`() {
+        val result = callDetails(mapOf("packageName" to 123, "language" to "en-US"))
+
+        assertContains(result.text(), "packageName must be text")
+    }
+
+    @Test
+    fun `get_app_details reports a Play failure as an error result`() {
+        val result = callDetails(
+            mapOf("packageName" to "com.example.app", "language" to "en-US"),
+            FakeCatalog(IllegalStateException("boom")),
+        )
+
+        assertEquals(true, result.isError)
+        assertContains(result.text(), "boom")
     }
 
     @Test

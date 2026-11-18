@@ -1,5 +1,7 @@
 package io.devexpert.mcp
 
+import io.devexpert.playstore.CatalogQueries
+import io.devexpert.playstore.PlayCatalogClient
 import io.devexpert.playstore.PlayStoreClient
 import io.devexpert.playstore.ReleaseCommands
 import io.devexpert.playstore.ServiceAccountKeyFile
@@ -22,8 +24,11 @@ class PlayStoreMcpServer {
     fun initialize() {
         val keyPath = System.getenv(KEY_PATH_ENV)
             ?: throw IllegalStateException("$KEY_PATH_ENV is not set")
-        val client = PlayStoreClient(ServiceAccountKeyFile.validate(keyPath))
-        PlayStoreTools(ReleaseCommands(client)).registerTools(server)
+        val keyFile = ServiceAccountKeyFile.validate(keyPath)
+        val publisher = lazy { PlayStoreClient.createPublisher(keyFile) }
+        val releases = ReleaseCommands(PlayStoreClient { publisher.value })
+        val catalog = CatalogQueries(PlayCatalogClient { publisher.value })
+        PlayStoreTools(releases, catalog).registerTools(server)
     }
 
     private companion object {

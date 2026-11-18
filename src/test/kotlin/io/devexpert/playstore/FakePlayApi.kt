@@ -23,6 +23,13 @@ internal class FakePlayApi {
 
     var uploadedVersionCode = 141
 
+    /** JSON bodies of the catalog endpoints; null answers 404. */
+    var details: String? = null
+    var listings: String? = null
+
+    /** Image list bodies keyed `language/imageType`; a missing key answers 204 with no body, as Play does for no images. */
+    val images = mutableMapOf<String, String>()
+
     /** Returns an HTTP status to force for a request, or null to let it succeed. */
     var fail: (method: String, url: String) -> Int? = { _, _ -> null }
 
@@ -51,6 +58,10 @@ internal class FakePlayApi {
             url.contains("upload_id=") -> json("""{"versionCode": $uploadedVersionCode}""")
             url.contains("uploadType=resumable") ->
                 MockLowLevelHttpResponse().setStatusCode(200).addHeader("Location", "$url&upload_id=1")
+            method == "GET" && path.endsWith("/details") -> details?.let { json(it) } ?: error(404)
+            method == "GET" && path.endsWith("/listings") -> listings?.let { json(it) } ?: error(404)
+            method == "GET" && path.contains("/listings/") ->
+                images[path.substringAfter("/listings/")]?.let { json(it) } ?: MockLowLevelHttpResponse().setStatusCode(204)
             method == "POST" && path.endsWith("/edits") -> json("""{"id": "edit-1"}""")
             method == "POST" && path.endsWith(":commit") -> json("""{"id": "edit-1"}""")
             method == "DELETE" -> MockLowLevelHttpResponse().setStatusCode(204)

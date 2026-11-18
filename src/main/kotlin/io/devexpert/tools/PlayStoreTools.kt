@@ -1,5 +1,6 @@
 package io.devexpert.tools
 
+import io.devexpert.playstore.CatalogQueries
 import io.devexpert.playstore.CommandResult
 import io.devexpert.playstore.DeployRequest
 import io.devexpert.playstore.InvalidRequestException
@@ -7,6 +8,7 @@ import io.devexpert.playstore.PromoteRequest
 import io.devexpert.playstore.ReleaseCommands
 import io.devexpert.playstore.TrackPolicy
 import io.devexpert.playstore.UpdateReleaseNotesRequest
+import io.modelcontextprotocol.kotlin.sdk.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.TextContent
 import io.modelcontextprotocol.kotlin.sdk.Tool
@@ -21,7 +23,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.slf4j.LoggerFactory
 
-class PlayStoreTools(private val commands: ReleaseCommands) {
+class PlayStoreTools(private val commands: ReleaseCommands, private val catalog: CatalogQueries) {
     private val logger = LoggerFactory.getLogger(PlayStoreTools::class.java)
 
     fun registerTools(server: Server) {
@@ -96,7 +98,34 @@ class PlayStoreTools(private val commands: ReleaseCommands) {
             }
         }
 
-        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases")
+        registerGetAppDetails(server)
+        logger.info("Registered tools: deploy_app, promote_release, update_release_notes, get_releases, get_app_details")
+    }
+
+    private fun registerGetAppDetails(server: Server) {
+        server.addTool(
+            name = "get_app_details",
+            description = "Read-only. Everything the Play Console shows for one language of the store listing: " +
+                "name, short and full description with their length and limit, video, and the icon, feature graphic " +
+                "and phone/tablet screenshots, plus the app's default language and contact details.",
+            inputSchema = Tool.Input(
+                properties = buildJsonObject {
+                    put("packageName", property("string", "Application id, e.g. com.example.app"))
+                    put("language", property("string", "Play language tag of the listing, e.g. en-US or es-419"))
+                },
+                required = listOf("packageName", "language"),
+            ),
+        ) { request ->
+            handle {
+                catalog.appDetails(request.requireText("packageName"), request.requireText("language"))
+            }
+        }
+    }
+
+    private fun CallToolRequest.requireText(key: String): String {
+        val primitive = arguments[key] as? JsonPrimitive ?: throw InvalidRequestException("$key is required")
+        if (!primitive.isString) throw InvalidRequestException("$key must be text")
+        return primitive.content
     }
 
     /** Runs [block] off the main thread and maps validation and API failures to MCP error results. */
