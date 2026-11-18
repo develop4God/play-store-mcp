@@ -11,15 +11,20 @@ class PlayImageClient internal constructor(publisherSupplier: () -> AndroidPubli
     private val publisher: AndroidPublisher by lazy(publisherSupplier)
 
     override fun replaceImages(request: ReplaceStoreImagesRequest): WriteResult {
-        logger.info("Replacing {} in {} of {}", request.imageType, request.language, request.packageName)
-        return publisher.commitHeldEdit(request.packageName) { editId ->
-            val images = publisher.edits().images()
-            images.deleteall(request.packageName, editId, request.language, request.imageType).execute()
-            val ids = request.images.map { image ->
-                images.upload(request.packageName, editId, request.language, request.imageType, FileContent(image.mimeType, File(image.path)))
-                    .execute().image?.id.orEmpty()
-            }
-            "Replaced the ${request.imageType} of ${request.language} with ${ids.size} image(s), ids $ids"
+        logger.info("Replacing images in {} slot(s) of {}", request.replacements.size, request.packageName)
+        return publisher.commitStoreEdit(request.packageName, request.sendForReview) { editId ->
+            val summaries = request.replacements.map { replace(request.packageName, editId, it) }
+            "Replaced " + summaries.joinToString("; ")
         }
+    }
+
+    private fun replace(packageName: String, editId: String, replacement: ImageReplacement): String {
+        val images = publisher.edits().images()
+        images.deleteall(packageName, editId, replacement.language, replacement.imageType).execute()
+        val ids = replacement.images.map { image ->
+            images.upload(packageName, editId, replacement.language, replacement.imageType, FileContent(image.mimeType, File(image.path)))
+                .execute().image?.id.orEmpty()
+        }
+        return "${replacement.language} ${replacement.imageType} (${ids.size} image(s), ids $ids)"
     }
 }

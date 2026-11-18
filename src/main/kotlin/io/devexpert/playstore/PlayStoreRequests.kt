@@ -152,10 +152,12 @@ internal fun Map<String, JsonElement>.requireString(key: String): String {
     return primitive.content.takeIf { it.isNotBlank() } ?: throw InvalidRequestException("$key must not be blank")
 }
 
-internal fun Map<String, JsonElement>.optionalConfirm(): Boolean {
-    val primitive = this["confirm"] as? JsonPrimitive ?: return false
-    if (primitive.isString) throw InvalidRequestException("confirm must be a boolean")
-    return primitive.booleanOrNull ?: throw InvalidRequestException("confirm must be a boolean")
+internal fun Map<String, JsonElement>.optionalConfirm(): Boolean = optionalBoolean("confirm")
+
+internal fun Map<String, JsonElement>.optionalBoolean(key: String): Boolean {
+    val primitive = this[key] as? JsonPrimitive ?: return false
+    if (primitive.isString) throw InvalidRequestException("$key must be a boolean")
+    return primitive.booleanOrNull ?: throw InvalidRequestException("$key must be a boolean")
 }
 
 private fun Map<String, JsonElement>.requireReleaseNotes(): Map<String, String> {

@@ -7,6 +7,6 @@ internal class FakeImagePublisher(private val failure: Exception? = null) : Play
     override fun replaceImages(request: ReplaceStoreImagesRequest): WriteResult {
         calls += request
         failure?.let { throw it }
-        return WriteResult(true, "edit-1", "Replaced ${request.images.size} image(s). Saved as a draft")
+        return WriteResult(true, "edit-1", "Replaced ${request.replacements.size} slot(s)")
     }
 }

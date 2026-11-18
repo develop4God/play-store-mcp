@@ -262,23 +262,33 @@ class PlayStoreToolsTest {
         }
     }
 
-    private fun imageArgs(path: String, confirm: Any? = null): Map<String, Any?> = buildMap {
+    private fun replacementArgs(path: String, confirm: Any? = null, sendForReview: Any? = null): Map<String, Any?> = buildMap {
         put("packageName", "com.example.app")
-        put("language", "en-US")
-        put("imageType", "phoneScreenshots")
-        put("imagePaths", JsonArray(listOf(JsonPrimitive(path))))
+        put(
+            "replacements",
+            JsonArray(
+                listOf(
+                    buildJsonObject {
+                        put("language", JsonPrimitive("en-US"))
+                        put("imageType", JsonPrimitive("phoneScreenshots"))
+                        put("imagePaths", JsonArray(listOf(JsonPrimitive(path))))
+                    }
+                )
+            )
+        )
         confirm?.let { put("confirm", it) }
+        sendForReview?.let { put("sendForReview", it) }
     }
 
     @Test
-    fun `replace_store_images schema requires the arguments and offers only supported types`() {
+    fun `replace_store_images schema requires replacements and offers only supported types`() {
         val schema = withClient(FakePublisher()) { client ->
             client.listTools()!!.tools.single { it.name == "replace_store_images" }.inputSchema
         }
 
-        assertEquals(listOf("packageName", "language", "imageType", "imagePaths"), schema.required)
+        assertEquals(listOf("packageName", "replacements"), schema.required)
         assertContains(schema.properties.toString(), "phoneScreenshots")
-        assertContains(schema.properties.toString(), "\"array\"")
+        assertContains(schema.properties.toString(), "sendForReview")
     }
 
     @Test
@@ -286,7 +296,7 @@ class PlayStoreToolsTest {
         val publisher = FakeImagePublisher()
 
         val result = withImages(publisher) { client, images ->
-            client.callTool("replace_store_images", imageArgs(images.png("a.png", 1080, 1920).path))!!
+            client.callTool("replace_store_images", replacementArgs(images.png("a.png", 1080, 1920).path))!!
         }
 
         assertContains(result.text(), "DRY RUN")
@@ -294,16 +304,27 @@ class PlayStoreToolsTest {
     }
 
     @Test
-    fun `replace_store_images writes only with confirm true`() {
+    fun `replace_store_images writes only with confirm true and holds back unless sendForReview`() {
         val publisher = FakeImagePublisher()
 
         val result = withImages(publisher) { client, images ->
-            client.callTool("replace_store_images", imageArgs(images.png("a.png", 1080, 1920).path, confirm = true))!!
+            client.callTool("replace_store_images", replacementArgs(images.png("a.png", 1080, 1920).path, confirm = true))!!
         }
 
         assertNotEquals(true, result.isError)
         assertContains(result.text(), "SUCCESS")
-        assertEquals(1, publisher.calls.size)
+        assertEquals(listOf(false), publisher.calls.map { it.sendForReview })
+    }
+
+    @Test
+    fun `replace_store_images passes sendForReview through only when true`() {
+        val publisher = FakeImagePublisher()
+
+        withImages(publisher) { client, images ->
+            client.callTool("replace_store_images", replacementArgs(images.png("a.png", 1080, 1920).path, confirm = true, sendForReview = true))
+        }
+
+        assertEquals(listOf(true), publisher.calls.map { it.sendForReview })
     }
 
     @Test
@@ -311,7 +332,7 @@ class PlayStoreToolsTest {
         val publisher = FakeImagePublisher()
 
         val result = withImages(publisher) { client, images ->
-            client.callTool("replace_store_images", imageArgs(images.png("tiny.png", 10, 10).path, confirm = true))!!
+            client.callTool("replace_store_images", replacementArgs(images.png("tiny.png", 10, 10).path, confirm = true))!!
         }
 
         assertEquals(true, result.isError)
@@ -320,18 +341,19 @@ class PlayStoreToolsTest {
     }
 
     @Test
-    fun `replace_store_images rejects a non-array imagePaths and a string confirm`() {
+    fun `replace_store_images rejects non-boolean flags and a non-array replacements`() {
         val publisher = FakeImagePublisher()
 
-        val notArray = withImages(publisher) { client, images ->
-            client.callTool("replace_store_images", imageArgs("x") + ("imagePaths" to images.png("a.png", 1080, 1920).path))!!
-        }
-        val stringConfirm = withImages(publisher) { client, images ->
-            client.callTool("replace_store_images", imageArgs(images.png("a.png", 1080, 1920).path, confirm = "true"))!!
+        val results = withImages(publisher) { client, images ->
+            val path = images.png("a.png", 1080, 1920).path
+            listOf(
+                client.callTool("replace_store_images", replacementArgs(path, confirm = "true"))!!,
+                client.callTool("replace_store_images", replacementArgs(path, sendForReview = "true"))!!,
+                client.callTool("replace_store_images", mapOf("packageName" to "com.example.app", "replacements" to path))!!
+            )
         }
 
-        assertEquals(true, notArray.isError)
-        assertEquals(true, stringConfirm.isError)
+        assertTrue(results.all { it.isError == true })
         assertTrue(publisher.calls.isEmpty())
     }
 }

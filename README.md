@@ -8,7 +8,7 @@ An MCP (Model Context Protocol) server that enables interaction with Google Play
 
 ## Safety model
 
-- **Nothing is ever sent to Google review by this server.** Every store listing change (and every `production` release) is committed with `changesNotSentForReview=true`, through one shared commit step with no switch to turn it off. Sending for review is a human action in the Play Console.
+- **Store listing changes are held back from Google review by default** (`changesNotSentForReview=true`). Some apps are reviewed automatically and Google rejects that hold; for those the call fails with a clear error and changes nothing, and you must opt in with `sendForReview=true` to commit it to Google review. Opting in never cancels a review already in progress. With managed publishing on in the Play Console, approved changes still do not go live until you publish them.
 - Writes are limited to `internal`, `alpha`, `beta` and `production`. On `production` the server only saves a **draft** and commits with `changesNotSentForReview=true`: nothing is sent to Google review or reaches users until a human clicks "Send for review" in the Play Console. Only draft releases can be edited there. `promote_release` only does `internal` → `alpha`, `internal` → `beta`, `alpha` → `beta`. The rules are enforced in the request types and client, not only in the tool schema.
 - Every write is a **dry run** unless `confirm=true` is passed. A dry run validates input only and never contacts Google.
 - The version code is read from the uploaded file, not supplied by the caller.
@@ -74,14 +74,16 @@ Read-only. Everything the Play Console shows for one language: name, short and f
 - `language` (string): Play language tag, e.g. `en-US` or `es-419`. An unknown language fails and lists the available ones.
 
 ### 6. `replace_store_images`
-Replaces **all** images of one type in one language with the given files, in order. The current images of that language and type are deleted first; other languages are untouched. Saved as a draft and **never sent for review**: you send it from the Play Console. All or nothing: if any step fails the edit is discarded and the current images stay.
+Replaces **all** images of the given types in the given languages, in **one** edit (one commit, one review submission). For each `{language, imageType}` the current images are deleted and the files uploaded in order; other languages and types are untouched. All or nothing: if any step fails the edit is discarded and the current images stay.
 
 **Parameters:**
 - `packageName` (string): Application id
-- `language` (string): Play language tag
-- `imageType` (string): `icon`, `featureGraphic`, `phoneScreenshots`, `sevenInchScreenshots` or `tenInchScreenshots`
-- `imagePaths` (array of strings): Absolute paths of the new `.png`/`.jpg` files, in display order. `icon` and `featureGraphic` take one; screenshots up to 8.
-- `confirm` (boolean, optional): Must be `true` to replace; default `false` (dry run)
+- `replacements` (array): one entry per language and image type (each pair once):
+  - `language` (string): Play language tag, e.g. `en-US`
+  - `imageType` (string): `icon`, `featureGraphic`, `phoneScreenshots`, `sevenInchScreenshots` or `tenInchScreenshots`
+  - `imagePaths` (array of strings): absolute paths of the new `.png`/`.jpg` files, in display order. `icon` and `featureGraphic` take one; screenshots up to 8.
+- `sendForReview` (boolean, optional): default `false` (held back from review). `true` sends the change to Google review; needed for apps Google reviews automatically.
+- `confirm` (boolean, optional): must be `true` to write; default `false` (dry run)
 
 Files are checked locally before anything is sent: real format, size in KB, and pixel size (icon 512x512 PNG up to 1 MB; feature graphic 1024x500 up to 15 MB; screenshots 320-3840 px per side, longest side at most twice the shortest, up to 8 MB, no transparency).
 

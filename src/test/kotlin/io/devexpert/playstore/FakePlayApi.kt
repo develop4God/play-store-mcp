@@ -36,6 +36,9 @@ internal class FakePlayApi {
     var fail: (method: String, url: String) -> Int? = { _, _ -> null }
 
     /** Returns true to make a request die with a network error (e.g. a timeout) instead of answering. */
+    /** The message Google puts in an error body; defaults to a generic one. */
+    var errorMessage: String? = null
+
     var networkFailure: (method: String, url: String) -> Boolean = { _, _ -> false }
 
     val publisher: AndroidPublisher = AndroidPublisher.Builder(
@@ -87,5 +90,5 @@ internal class FakePlayApi {
 
     private fun error(status: Int) = MockLowLevelHttpResponse().setStatusCode(status)
         .setContentType("application/json")
-        .setContent("""{"error": {"code": $status, "message": "fake error $status"}}""")
+        .setContent("""{"error": {"code": $status, "message": "${errorMessage ?: "fake error $status"}"}}""")
 }

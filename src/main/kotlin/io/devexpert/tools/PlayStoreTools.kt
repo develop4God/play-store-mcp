@@ -135,33 +135,51 @@ class PlayStoreTools(
     private fun registerReplaceStoreImages(server: Server) {
         server.addTool(
             name = "replace_store_images",
-            description = "Replace ALL images of one type in one language of the store listing with the given files, in order. " +
-                "The current images of that language and type are deleted first; other languages are untouched. " +
-                "Saved as a draft and never sent for review: a human sends it from the Play Console. " +
-                "All or nothing: if any upload fails, nothing changes. Runs as a dry run unless confirm=true.",
+            description = "Replace ALL images of given types in given languages of the store listing, in ONE edit " +
+                "(one commit, one review submission). For each {language, imageType} the current images are deleted and the " +
+                "files uploaded in order; other languages and types are untouched. All or nothing: if any step fails, nothing " +
+                "changes. By default the change is held back from review; apps that cannot hold changes back fail with a clear " +
+                "error, and sendForReview=true sends them to Google review (a review in progress is never cancelled). " +
+                "Runs as a dry run unless confirm=true.",
             inputSchema = Tool.Input(
                 properties = buildJsonObject {
                     put("packageName", property("string", "Application id, e.g. com.example.app"))
-                    put("language", property("string", "Play language tag of the listing, e.g. en-US or es-419"))
-                    put("imageType", property("string", "Image type to replace", enum = StoreImageSlots.maxPerType.keys))
-                    put(
-                        "imagePaths",
-                        buildJsonObject {
-                            put("type", JsonPrimitive("array"))
-                            put("items", buildJsonObject { put("type", JsonPrimitive("string")) })
-                            put(
-                                "description",
-                                JsonPrimitive("Absolute paths of the new .png/.jpg files, in display order (icon and featureGraphic take exactly one)")
-                            )
-                        }
-                    )
+                    put("replacements", replacementsSchema())
+                    put("sendForReview", property("boolean", "Send the change to Google review instead of holding it back; default false"))
                     put("confirm", property("boolean", "Must be true to actually replace; default false (dry run)"))
                 },
-                required = listOf("packageName", "language", "imageType", "imagePaths")
+                required = listOf("packageName", "replacements")
             )
         ) { request ->
             handle { images.replaceImages(ReplaceStoreImagesRequest.parse(request.arguments)) }
         }
+    }
+
+    private fun replacementsSchema(): JsonElement = buildJsonObject {
+        put("type", JsonPrimitive("array"))
+        put("description", JsonPrimitive("One entry per language and image type; each pair may appear once"))
+        put(
+            "items",
+            buildJsonObject {
+                put("type", JsonPrimitive("object"))
+                put(
+                    "properties",
+                    buildJsonObject {
+                        put("language", property("string", "Play language tag, e.g. en-US or es-419"))
+                        put("imageType", property("string", "Image type to replace", enum = StoreImageSlots.maxPerType.keys))
+                        put(
+                            "imagePaths",
+                            buildJsonObject {
+                                put("type", JsonPrimitive("array"))
+                                put("items", buildJsonObject { put("type", JsonPrimitive("string")) })
+                                put("description", JsonPrimitive("Absolute paths of the new .png/.jpg files, in display order (icon and featureGraphic take one)"))
+                            }
+                        )
+                    }
+                )
+                put("required", JsonArray(listOf("language", "imageType", "imagePaths").map { JsonPrimitive(it) }))
+            }
+        )
     }
 
     private fun CallToolRequest.requireText(key: String): String {
